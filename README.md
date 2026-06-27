@@ -22,4 +22,4 @@ http://127.0.0.1:8765/Jackfish/index.html?debug=moai
 
 ## Cloudflare Pages
 
-Use `outputs/Jackfish` as the Pages build output directory. The app is static and does not need a build command.
+Use the repository root as the Pages build output directory. The app is static and does not need a build command.
