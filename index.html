@@ -1,0 +1,2021 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jackfish 3D</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071316;
+      --panel: rgba(12, 20, 23, 0.76);
+      --panel-strong: rgba(23, 34, 38, 0.92);
+      --ink: #f3fbfc;
+      --muted: #a9bac0;
+      --line: rgba(255, 255, 255, 0.16);
+      --accent: #f15ca8;
+      --green: #9be564;
+      --edge: max(10px, env(safe-area-inset-left));
+      --edge-r: max(10px, env(safe-area-inset-right));
+      --edge-b: max(10px, env(safe-area-inset-bottom));
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    #world {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      cursor: grab;
+      background: #071316;
+      touch-action: none;
+    }
+
+    #world:active { cursor: grabbing; }
+
+    .hud {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      left: var(--edge);
+      z-index: 3;
+      width: min(350px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      border-radius: 8px;
+      box-shadow: 0 18px 54px rgba(0, 0, 0, 0.32);
+    }
+
+    .hud.collapsed {
+      width: min(196px, calc(100vw - 32px));
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 14px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hud.collapsed .topbar { border-bottom-color: transparent; }
+
+    .hud.collapsed .status { display: none; }
+
+    h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 14px rgba(155, 229, 100, 0.76);
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel-strong);
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: rgba(255, 255, 255, 0.34);
+      background: rgba(39, 55, 61, 0.96);
+    }
+
+    button.active {
+      border-color: rgba(241, 92, 168, 0.76);
+      background: rgba(241, 92, 168, 0.22);
+    }
+
+    .toggle-panel {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+    }
+
+    .panel-body { display: block; }
+    .hud.collapsed .panel-body { display: none; }
+
+    .controls {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 96px 1fr 42px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    output {
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      font-size: 12px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding-top: 2px;
+    }
+
+    .look-controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .look-controls button {
+      min-width: 0;
+      padding: 0 6px;
+    }
+
+    .tank-frame {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      right: var(--edge-r);
+      z-index: 2;
+      width: min(350px, calc(100vw - 32px));
+      aspect-ratio: 1.42;
+      padding: 12px;
+      pointer-events: none;
+      border: 1px solid rgba(155, 238, 250, 0.36);
+      border-radius: 8px;
+      background: rgba(12, 20, 23, 0.62);
+      backdrop-filter: blur(14px);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+        inset 0 0 38px rgba(112, 215, 232, 0.08),
+        0 0 28px rgba(112, 215, 232, 0.12);
+    }
+
+    .tank-frame::before,
+    .tank-frame::after {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 5px;
+    }
+
+    .tank-frame::after {
+      inset: auto 18px 18px;
+      height: 1px;
+      border: 0;
+      background: linear-gradient(90deg, transparent, rgba(155, 238, 250, 0.34), transparent);
+    }
+
+    .tank-frame.hidden {
+      display: none;
+    }
+
+    .tank-map {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 5px;
+      background: rgba(4, 12, 15, 0.48);
+    }
+
+    .counter {
+      position: fixed;
+      right: var(--edge-r);
+      bottom: var(--edge-b);
+      z-index: 2;
+      width: min(246px, calc(100vw - 32px));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 54px rgba(0, 0, 0, 0.32);
+      overflow: hidden;
+    }
+
+    .counter.hidden {
+      display: none;
+    }
+
+    .counter-float {
+      position: fixed;
+      right: var(--edge-r);
+      bottom: var(--edge-b);
+      z-index: 4;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 7px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+    }
+
+    .counter:not(.hidden) + .counter-float {
+      bottom: min(356px, calc(100vh - 52px));
+    }
+
+    .counter.collapsed {
+      width: min(124px, calc(100vw - 32px));
+    }
+
+    .counter-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 730;
+    }
+
+    .counter-title {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .toggle-counter {
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .counter.collapsed .counter-title,
+    .counter.collapsed .counter-total,
+    .counter.collapsed .counter-meta,
+    .counter.collapsed .counter-list {
+      display: none;
+    }
+
+    .counter.collapsed .counter-header {
+      justify-content: center;
+      border-bottom-color: transparent;
+      padding: 8px;
+    }
+
+    .counter-total,
+    .counter-meta {
+      color: var(--muted);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .counter-total {
+      grid-column: 1;
+      font-size: 11px;
+    }
+
+    .toggle-counter {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+
+    .counter-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px 0;
+      font-size: 11px;
+    }
+
+    .counter-list {
+      display: grid;
+      gap: 7px;
+      padding: 10px 12px 12px;
+      font-size: 12px;
+    }
+
+    .counter-row {
+      position: relative;
+      display: grid;
+      grid-template-columns: 72px 1fr 38px;
+      align-items: center;
+      gap: 8px;
+      min-height: 28px;
+      padding: 0 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.05);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .counter-bar {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      min-width: 0;
+      background: color-mix(in srgb, var(--swatch), transparent 65%);
+      box-shadow: inset -1px 0 0 color-mix(in srgb, var(--swatch), white 24%);
+      transition: width 260ms ease, min-width 260ms ease;
+    }
+
+    .counter-label,
+    .counter-percent,
+    .counter-count {
+      position: relative;
+      z-index: 1;
+    }
+
+    .counter-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+    }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--swatch);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--swatch), transparent 48%);
+    }
+
+    .counter-percent {
+      color: var(--muted);
+      text-align: right;
+      font-size: 11px;
+    }
+
+    .counter-count {
+      text-align: right;
+      color: var(--ink);
+    }
+
+    @media (max-width: 680px) {
+      .hud {
+        top: 10px;
+        left: 10px;
+        width: calc(100vw - 20px);
+      }
+
+      .row { grid-template-columns: 78px 1fr 36px; }
+
+      .counter {
+        right: 10px;
+        bottom: 10px;
+        width: min(196px, calc(100vw - 20px));
+      }
+
+      .counter-float {
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .counter:not(.hidden) + .counter-float {
+        bottom: min(352px, calc(100vh - 48px));
+      }
+
+      .tank-frame {
+        top: auto;
+        right: auto;
+        left: 10px;
+        bottom: 10px;
+        width: min(350px, calc(100vw - 20px));
+      }
+
+    }
+
+    @media (max-height: 520px) and (orientation: landscape) {
+      .hud {
+        top: var(--edge-b);
+        left: var(--edge);
+        width: min(300px, 38vw);
+        max-height: calc(100vh - var(--edge-b) * 2);
+      }
+
+      .hud.collapsed {
+        width: min(186px, 34vw);
+      }
+
+      .topbar {
+        gap: 8px;
+        padding: 9px 10px 8px;
+      }
+
+      h1 {
+        font-size: 14px;
+      }
+
+      .status {
+        font-size: 10px;
+      }
+
+      button {
+        min-height: 30px;
+        font-size: 11px;
+      }
+
+      .toggle-panel {
+        min-height: 26px;
+        min-width: 44px;
+        padding: 0 8px;
+      }
+
+      .controls {
+        gap: 8px;
+        padding: 10px;
+      }
+
+      .row {
+        grid-template-columns: 70px minmax(0, 1fr) 34px;
+        gap: 7px;
+      }
+
+      label,
+      output {
+        font-size: 10px;
+      }
+
+      input[type="range"] {
+        min-height: 24px;
+      }
+
+      .buttons,
+      .look-controls {
+        gap: 6px;
+      }
+
+      .tank-frame {
+        top: var(--edge-b);
+        right: var(--edge-r);
+        width: min(260px, 30vw);
+        padding: 8px;
+      }
+
+      .tank-frame::before {
+        inset: 10px;
+      }
+
+      .tank-frame::after {
+        inset: auto 12px 12px;
+      }
+
+      .counter {
+        width: min(204px, 28vw);
+        right: var(--edge-r);
+        bottom: var(--edge-b);
+      }
+
+      .counter-header {
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+
+      .counter-meta {
+        padding: 6px 10px 0;
+        font-size: 10px;
+      }
+
+      .counter-list {
+        gap: 5px;
+        padding: 8px 10px 10px;
+        font-size: 10px;
+      }
+
+      .counter-row {
+        grid-template-columns: 58px 1fr 30px;
+        min-height: 24px;
+        gap: 6px;
+        padding: 0 6px;
+      }
+
+      .counter-percent {
+        font-size: 10px;
+      }
+
+      .counter-float {
+        right: var(--edge-r);
+        bottom: var(--edge-b);
+        min-height: 30px;
+        padding: 0 10px;
+      }
+
+      .counter:not(.hidden) + .counter-float {
+        bottom: min(310px, calc(100vh - 42px));
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="world" aria-label="Three-dimensional Jackfish tank simulation"></canvas>
+
+  <section class="hud collapsed" aria-label="Simulation controls">
+    <div class="topbar">
+      <h1>jackfish.world</h1>
+      <div class="top-actions">
+        <span class="status" id="fps">swimming</span>
+        <button id="togglePanel" class="toggle-panel" type="button" aria-expanded="false" aria-controls="panelBody">Show</button>
+      </div>
+    </div>
+    <div id="panelBody" class="panel-body">
+      <div class="controls">
+        <div class="row">
+          <label for="count">count</label>
+          <input id="count" type="range" min="40" max="360" value="220" step="10">
+          <output for="count">220</output>
+        </div>
+        <div class="row">
+          <label for="separation">ball-like</label>
+          <input id="separation" type="range" min="0" max="3" value="0.9" step="0.1">
+          <output for="separation">0.9</output>
+        </div>
+        <div class="row">
+          <label for="alignment">align</label>
+          <input id="alignment" type="range" min="0" max="3" value="1.0" step="0.1">
+          <output for="alignment">1.0</output>
+        </div>
+        <div class="row">
+          <label for="cohesion">scatter</label>
+          <input id="cohesion" type="range" min="0" max="3" value="1.6" step="0.1">
+          <output for="cohesion">1.6</output>
+        </div>
+        <div class="row">
+          <label for="speed">speed</label>
+          <input id="speed" type="range" min="0.5" max="5.2" value="1.0" step="0.1">
+          <output for="speed">1.0</output>
+        </div>
+        <div class="row">
+          <label for="storm">storm</label>
+          <input id="storm" type="range" min="0" max="3" value="1.8" step="0.1">
+          <output for="storm">1.8</output>
+        </div>
+        <div class="row">
+          <label for="zoom">zoom</label>
+          <input id="zoom" type="range" min="0.10" max="2.4" value="1.0" step="0.05">
+          <output for="zoom">1.0x</output>
+        </div>
+        <div class="buttons">
+          <button id="cameraMode" type="button" class="active">fish view</button>
+          <button id="toggleTankFrame" type="button" class="active">Hide frame</button>
+        </div>
+        <div class="look-controls">
+          <button class="active" data-look="forward" type="button">forward</button>
+          <button data-look="up" type="button">up</button>
+          <button data-look="back" type="button">back</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="tankFrame" class="tank-frame" aria-label="2D tank view">
+    <canvas id="tankMap" class="tank-map"></canvas>
+  </div>
+
+  <aside class="counter hidden" aria-label="Colored fish count">
+    <div class="counter-header">
+      <span class="counter-title">color spread</span>
+      <span id="colorTotal" class="counter-total">21 / 220 alive</span>
+    </div>
+    <div id="colorPanelBody">
+      <div class="counter-meta">
+        <span id="foodStatus">food slots 176</span>
+        <span id="regenStatus">regen 20s</span>
+      </div>
+      <div id="colorCounts" class="counter-list"></div>
+    </div>
+  </aside>
+  <button id="toggleCounter" class="counter-float" type="button" aria-expanded="false" aria-controls="colorPanelBody">Show colors</button>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
+
+    const canvas = document.getElementById("world");
+    const controls = {
+      count: document.getElementById("count"),
+      separation: document.getElementById("separation"),
+      alignment: document.getElementById("alignment"),
+      cohesion: document.getElementById("cohesion"),
+      speed: document.getElementById("speed"),
+      storm: document.getElementById("storm"),
+      zoom: document.getElementById("zoom")
+    };
+    const fpsLabel = document.getElementById("fps");
+    const cameraModeButton = document.getElementById("cameraMode");
+    const tankFrame = document.getElementById("tankFrame");
+    const tankMap = document.getElementById("tankMap");
+    const tankMapCtx = tankMap.getContext("2d");
+    const toggleTankFrameButton = document.getElementById("toggleTankFrame");
+    const lookButtons = [...document.querySelectorAll("[data-look]")];
+    const hud = document.querySelector(".hud");
+    const panelBody = document.getElementById("panelBody");
+    const togglePanelButton = document.getElementById("togglePanel");
+    const counter = document.querySelector(".counter");
+    const colorPanelBody = document.getElementById("colorPanelBody");
+    const toggleCounterButton = document.getElementById("toggleCounter");
+    const colorCountsBody = document.getElementById("colorCounts");
+    const colorTotal = document.getElementById("colorTotal");
+    const foodStatus = document.getElementById("foodStatus");
+    const regenStatus = document.getElementById("regenStatus");
+
+    const palette = [
+      { name: "rose", value: "#f15ca8" },
+      { name: "cyan", value: "#70d7e8" },
+      { name: "gold", value: "#ffd166" },
+      { name: "green", value: "#9be564" },
+      { name: "blue", value: "#62a8ff" },
+      { name: "violet", value: "#b991ff" },
+      { name: "coral", value: "#ff8a65" }
+    ];
+
+    const tank = { x: 2240, y: 1240, z: 1440 };
+    const starvationMs = 15000;
+    const foodRegenMs = 20000;
+    const debugMoai = new URLSearchParams(window.location.search).get("debug") === "moai";
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const moaiAnchor = () => new THREE.Vector3(tank.x / 2 - 175, -tank.y / 2, tank.z / 2 - 150);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x071316, 0.0009);
+
+    const camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.1, 9000);
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x071316, 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const ambient = new THREE.HemisphereLight(0x92f4ff, 0x13252c, 2.1);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xe8feff, 2.45);
+    sun.position.set(-720, 1040, 480);
+    sun.castShadow = true;
+    scene.add(sun);
+
+    const glow = new THREE.PointLight(0x70d7e8, 5200, 2800);
+    glow.position.set(0, 0, 0);
+    scene.add(glow);
+
+    const tankGroup = new THREE.Group();
+    scene.add(tankGroup);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(tank.x, tank.z, 28, 18),
+      new THREE.MeshStandardMaterial({ color: 0x183039, roughness: 0.92, metalness: 0.05 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -tank.y / 2;
+    floor.receiveShadow = true;
+    tankGroup.add(floor);
+
+    const tankLines = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(tank.x, tank.y, tank.z)),
+      new THREE.LineBasicMaterial({ color: 0x9beefa, transparent: true, opacity: 0.28 })
+    );
+    tankGroup.add(tankLines);
+
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(tank.x, tank.y, tank.z),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x4ec6d8,
+        transparent: true,
+        opacity: 0.065,
+        roughness: 0.04,
+        metalness: 0,
+        transmission: 0.22,
+        side: THREE.BackSide
+      })
+    );
+    tankGroup.add(glass);
+
+    const plankMaterial = new THREE.MeshStandardMaterial({ color: 0x21424a, roughness: 0.84 });
+    for (let i = 0; i < 34; i++) {
+      const stone = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(rand(3, 10), 0),
+        plankMaterial
+      );
+      stone.position.set(rand(-tank.x * 0.47, tank.x * 0.47), -tank.y / 2 + rand(2, 6), rand(-tank.z * 0.44, tank.z * 0.44));
+      stone.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
+      tankGroup.add(stone);
+    }
+
+    const fishBodyGeometry = new THREE.ConeGeometry(6, 18, 14);
+    fishBodyGeometry.rotateZ(-Math.PI / 2);
+    const fishTailGeometry = new THREE.ConeGeometry(5.4, 8, 3);
+    fishTailGeometry.rotateZ(Math.PI / 2);
+    const foodGeometry = new THREE.SphereGeometry(2.6, 12, 8);
+    const playerRingGeometry = new THREE.TorusGeometry(12, 0.75, 8, 48);
+    const turtleShellGeometry = new THREE.SphereGeometry(5.6, 16, 10);
+    turtleShellGeometry.scale(1.25, 0.42, 0.82);
+    const turtleHeadGeometry = new THREE.SphereGeometry(2.1, 12, 8);
+    const turtleFlipperGeometry = new THREE.BoxGeometry(5.2, 0.8, 2.1);
+    const dollarCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(7, 13, 0),
+      new THREE.Vector3(-1, 16, 0),
+      new THREE.Vector3(-8, 11, 0),
+      new THREE.Vector3(-6, 5, 0),
+      new THREE.Vector3(0, 2, 0),
+      new THREE.Vector3(7, -2, 0),
+      new THREE.Vector3(7, -9, 0),
+      new THREE.Vector3(0, -14, 0),
+      new THREE.Vector3(-8, -10, 0)
+    ]);
+    const dollarStrokeGeometry = new THREE.TubeGeometry(dollarCurve, 72, 1.8, 14, false);
+    const dollarStemGeometry = new THREE.CylinderGeometry(1.35, 1.35, 34, 14);
+    const balloonBasketGeometry = new THREE.BoxGeometry(11, 7, 9);
+    const miniHatGeometry = new THREE.ConeGeometry(2.55, 2.3, 18);
+    const miniHeadGeometry = new THREE.SphereGeometry(2.2, 12, 8);
+    const miniBodyGeometry = new THREE.BoxGeometry(4.2, 5.4, 2.6);
+    const miniArmGeometry = new THREE.BoxGeometry(1.2, 5.6, 1.2);
+    const moaiFaceGeometry = new THREE.BoxGeometry(30, 70, 10);
+    const moaiBrowGeometry = new THREE.BoxGeometry(30, 7, 7);
+    const moaiEyeGeometry = new THREE.BoxGeometry(8.5, 5.5, 3.2);
+    const moaiNoseGeometry = new THREE.BoxGeometry(10, 31, 12);
+    const moaiEarGeometry = new THREE.BoxGeometry(6, 28, 8);
+    const moaiLipGeometry = new THREE.BoxGeometry(22, 5, 5);
+    const ghostMaterial = new THREE.MeshStandardMaterial({ color: 0xddeef1, roughness: 0.38, metalness: 0.04, emissive: 0x1d3035, emissiveIntensity: 0.25 });
+    const turtleShellMaterial = new THREE.MeshStandardMaterial({ color: 0x7fbf7a, roughness: 0.5, metalness: 0.03, emissive: 0x6eea87, emissiveIntensity: 1.35 });
+    const turtleSkinMaterial = new THREE.MeshStandardMaterial({ color: 0xb4d88f, roughness: 0.55, metalness: 0.02, emissive: 0x8dff9c, emissiveIntensity: 1.05 });
+    const balloonMaterial = new THREE.MeshStandardMaterial({ color: 0xffd43b, roughness: 0.28, metalness: 0.04, emissive: 0xffd43b, emissiveIntensity: 1.35 });
+    const balloonBasketMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4f24, roughness: 0.66, metalness: 0.03, emissive: 0x5a2c12, emissiveIntensity: 0.42 });
+    const miniFaceMaterial = new THREE.MeshStandardMaterial({ color: 0xffd43b, roughness: 0.36, metalness: 0.03, emissive: 0xffc928, emissiveIntensity: 0.75 });
+    const miniClothMaterial = new THREE.MeshStandardMaterial({ color: 0xe8352f, roughness: 0.46, metalness: 0.04, emissive: 0xb81418, emissiveIntensity: 0.7 });
+    const miniHatMaterial = new THREE.MeshStandardMaterial({ color: 0xf2302c, roughness: 0.42, metalness: 0.03, emissive: 0xc41218, emissiveIntensity: 0.85 });
+    const moaiMaterial = new THREE.MeshStandardMaterial({ color: 0xb87333, roughness: 0.46, metalness: 0.52, emissive: 0x6f3216, emissiveIntensity: 0.28 });
+    const moaiDetailMaterial = new THREE.MeshStandardMaterial({ color: 0xd28a4a, roughness: 0.38, metalness: 0.6, emissive: 0x8b451c, emissiveIntensity: 0.36 });
+    const moaiEyeMaterial = new THREE.MeshStandardMaterial({ color: 0x1b0f0a, roughness: 0.62, metalness: 0.18, emissive: 0x070302, emissiveIntensity: 0.55 });
+    const playerGold = new THREE.Color("#ffd166");
+    const playerBlinkGold = new THREE.Color("#fff2a6");
+    const playerMaterial = new THREE.MeshStandardMaterial({ color: playerGold, roughness: 0.24, metalness: 0.08, emissive: playerGold, emissiveIntensity: 0.85 });
+
+    let boids = [];
+    let food = [];
+    let turtles = [];
+    let balloonRide = null;
+    let fedAssignments = new Map();
+    let foodCapacity = new Array(palette.length).fill(0);
+    let foodUsed = new Array(palette.length).fill(0);
+    let nextFoodRegen = performance.now() + foodRegenMs;
+    let frame = 0;
+    let lastTime = performance.now();
+    let pilotMode = true;
+    let pointerDown = false;
+    let yaw = 0;
+    let pitch = 0.12;
+    let panX = 0;
+    let panY = 0;
+    let lookMode = "forward";
+    const keys = new Set();
+
+    function lookDirection() {
+      return new THREE.Vector3(
+        Math.cos(pitch) * Math.cos(yaw),
+        Math.sin(pitch),
+        Math.cos(pitch) * Math.sin(yaw)
+      ).normalize();
+    }
+
+    function playerForward() {
+      const player = boids[0];
+      if (!player || player.velocity.lengthSq() <= 0.001) {
+        return new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
+      }
+      return player.velocity.clone().normalize();
+    }
+
+    function viewDirection() {
+      return lookMode === "forward" ? playerForward() : lookDirection();
+    }
+
+    function rightFromDirection(direction) {
+      const flat = direction.clone();
+      flat.y = 0;
+      if (flat.lengthSq() < 0.0001) flat.set(Math.cos(yaw), 0, Math.sin(yaw));
+      flat.normalize();
+      return new THREE.Vector3().crossVectors(flat, new THREE.Vector3(0, 1, 0)).normalize();
+    }
+
+    function setLookAngles(direction, level = false) {
+      yaw = Math.atan2(direction.z, direction.x);
+      pitch = level ? 0 : clamp(Math.asin(direction.y), -0.9, 0.9);
+    }
+
+    function setLookMode(mode) {
+      lookMode = mode;
+      panX = 0;
+      panY = 0;
+      const forward = playerForward();
+      const flatForward = forward.clone();
+      flatForward.y = 0;
+      if (flatForward.lengthSq() < 0.0001) flatForward.set(1, 0, 0);
+      flatForward.normalize();
+      const right = new THREE.Vector3(-flatForward.z, 0, flatForward.x).normalize();
+
+      if (mode === "forward") setLookAngles(forward);
+      if (mode === "back") setLookAngles(forward.clone().negate());
+      if (mode === "left") setLookAngles(right.clone().negate(), true);
+      if (mode === "right") setLookAngles(right, true);
+      if (mode === "up") setLookAngles(forward.clone().setY(1).normalize());
+      if (mode === "level") setLookAngles(forward, true);
+
+      for (const button of lookButtons) {
+        button.classList.toggle("active", button.dataset.look === mode);
+      }
+      if (!pilotMode) {
+        pilotMode = true;
+        cameraModeButton.classList.add("active");
+        cameraModeButton.textContent = "pilot";
+      }
+    }
+
+    function makeColorMaterial(index) {
+      const color = new THREE.Color(palette[index].value);
+      return new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.32,
+        metalness: 0.08,
+        emissive: color,
+        emissiveIntensity: 0.25
+      });
+    }
+
+    const colorMaterials = palette.map((_, index) => makeColorMaterial(index));
+    const foodMaterials = palette.map((entry) => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(entry.value),
+      roughness: 0.22,
+      emissive: new THREE.Color(entry.value),
+      emissiveIntensity: 0.55
+    }));
+
+    function makeFishMesh(isPlayer = false) {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(fishBodyGeometry, isPlayer ? playerMaterial : ghostMaterial);
+      body.castShadow = true;
+      const tail = new THREE.Mesh(fishTailGeometry, isPlayer ? playerMaterial : ghostMaterial);
+      tail.position.x = -11;
+      tail.scale.set(1, 1.05, 0.72);
+      group.add(body, tail);
+
+      if (isPlayer) {
+        const ring = new THREE.Mesh(playerRingGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42 }));
+        ring.rotation.y = Math.PI / 2;
+        ring.position.x = -2;
+        group.add(ring);
+      }
+      return group;
+    }
+
+    function makeTurtleMesh() {
+      const group = new THREE.Group();
+      const shell = new THREE.Mesh(turtleShellGeometry, turtleShellMaterial);
+      shell.castShadow = true;
+      const head = new THREE.Mesh(turtleHeadGeometry, turtleSkinMaterial);
+      head.position.x = 7;
+      group.add(shell, head);
+
+      const flipperPoints = [
+        { name: "frontLeft", x: 2.2, z: 5.2 },
+        { name: "frontRight", x: 2.2, z: -5.2 },
+        { name: "backLeft", x: -4.2, z: 4.3 },
+        { name: "backRight", x: -4.2, z: -4.3 }
+      ];
+      const flippers = {};
+      for (const point of flipperPoints) {
+        const flipper = new THREE.Mesh(turtleFlipperGeometry, turtleSkinMaterial);
+        flipper.position.set(point.x, -0.6, point.z);
+        flipper.rotation.y = point.z > 0 ? 0.55 : -0.55;
+        flipper.castShadow = true;
+        group.add(flipper);
+        flippers[point.name] = flipper;
+      }
+
+      const turtleGlow = new THREE.PointLight(0x9be564, 340, 190);
+      turtleGlow.position.set(0, 0, 0);
+      group.add(turtleGlow);
+
+      group.userData.flippers = flippers;
+      group.userData.glow = turtleGlow;
+      group.scale.setScalar(4.2);
+      return group;
+    }
+
+    function makeTurtle(index) {
+      const angle = rand(0, Math.PI * 2);
+      const turtle = {
+        position: new THREE.Vector3(rand(-tank.x * 0.22, tank.x * 0.22), rand(-tank.y * 0.12, tank.y * 0.16), rand(-tank.z * 0.22, tank.z * 0.22)),
+        velocity: new THREE.Vector3(Math.cos(angle), rand(-0.08, 0.08), Math.sin(angle)).multiplyScalar(rand(0.34, 0.52)),
+        wander: new THREE.Vector3(Math.cos(angle), rand(-0.08, 0.08), Math.sin(angle)).normalize(),
+        nextWander: frame + Math.floor(rand(180, 420)),
+        phase: index * Math.PI + rand(0, Math.PI),
+        mesh: makeTurtleMesh()
+      };
+      turtle.mesh.position.copy(turtle.position);
+      scene.add(turtle.mesh);
+      return turtle;
+    }
+
+    function seedTurtles() {
+      for (const turtle of turtles) scene.remove(turtle.mesh);
+      turtles = [makeTurtle(0), makeTurtle(1)];
+    }
+
+    function makeDollarBalloonMesh() {
+      const dollar = new THREE.Group();
+      const stroke = new THREE.Mesh(dollarStrokeGeometry, balloonMaterial);
+      const stemLeft = new THREE.Mesh(dollarStemGeometry, balloonMaterial);
+      const stemRight = new THREE.Mesh(dollarStemGeometry, balloonMaterial);
+      const backStroke = new THREE.Mesh(dollarStrokeGeometry, balloonMaterial);
+      const backStemLeft = new THREE.Mesh(dollarStemGeometry, balloonMaterial);
+      const backStemRight = new THREE.Mesh(dollarStemGeometry, balloonMaterial);
+      stroke.position.z = 1.5;
+      stemLeft.position.set(-2.4, 0, 1.5);
+      stemRight.position.set(2.4, 0, 1.5);
+      backStroke.position.z = -1.5;
+      backStemLeft.position.set(-2.4, 0, -1.5);
+      backStemRight.position.set(2.4, 0, -1.5);
+      backStroke.scale.set(0.94, 0.94, 0.94);
+      backStemLeft.scale.set(0.94, 0.94, 0.94);
+      backStemRight.scale.set(0.94, 0.94, 0.94);
+      dollar.add(stroke, stemLeft, stemRight, backStroke, backStemLeft, backStemRight);
+      dollar.rotation.y = -0.16;
+      dollar.scale.set(1.08, 1.08, 1.08);
+      for (const part of dollar.children) part.castShadow = true;
+      return dollar;
+    }
+
+    function makeMoaiFigure() {
+      const figure = new THREE.Group();
+
+      const face = new THREE.Mesh(moaiFaceGeometry, moaiMaterial);
+      face.position.set(0, 51, -9);
+      face.scale.set(0.92, 1, 1);
+      face.castShadow = true;
+      face.receiveShadow = true;
+      figure.add(face);
+
+      const forehead = new THREE.Mesh(moaiBrowGeometry, moaiDetailMaterial);
+      forehead.position.set(0, 76, -13.5);
+      forehead.rotation.x = -0.12;
+      forehead.castShadow = true;
+      figure.add(forehead);
+
+      for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(moaiEyeGeometry, moaiEyeMaterial);
+        eye.position.set(side * 7.3, 64, -17.2);
+        eye.rotation.y = side * 0.08;
+        figure.add(eye);
+      }
+
+      const nose = new THREE.Mesh(moaiNoseGeometry, moaiDetailMaterial);
+      nose.position.set(0, 54, -20);
+      nose.castShadow = true;
+      figure.add(nose);
+
+      const upperLip = new THREE.Mesh(moaiLipGeometry, moaiDetailMaterial);
+      upperLip.position.set(0, 35, -17.5);
+      upperLip.castShadow = true;
+      figure.add(upperLip);
+
+      const lowerLip = new THREE.Mesh(moaiLipGeometry, moaiMaterial);
+      lowerLip.position.set(0, 28, -16);
+      lowerLip.scale.set(0.88, 1, 1);
+      lowerLip.castShadow = true;
+      figure.add(lowerLip);
+
+      for (const side of [-1, 1]) {
+        const ear = new THREE.Mesh(moaiEarGeometry, moaiDetailMaterial);
+        ear.position.set(side * 18.5, 53, 0);
+        ear.rotation.z = side * 0.08;
+        ear.castShadow = true;
+        figure.add(ear);
+      }
+
+      const copperGlow = new THREE.PointLight(0xd28a4a, 900, 430);
+      copperGlow.position.set(0, 70, -18);
+      figure.add(copperGlow);
+
+      const spotlightTarget = new THREE.Object3D();
+      spotlightTarget.position.set(0, 62, -18);
+      figure.add(spotlightTarget);
+
+      const baseSpot = new THREE.SpotLight(0xffc45a, 5600, 620, 0.28, 0.58, 1.05);
+      baseSpot.position.set(0, 4, -58);
+      baseSpot.target = spotlightTarget;
+      baseSpot.castShadow = true;
+      baseSpot.shadow.mapSize.set(1024, 1024);
+      figure.add(baseSpot);
+
+      const height = 92;
+      figure.scale.setScalar((tank.y * 0.5) / height);
+      figure.position.copy(moaiAnchor());
+      figure.lookAt(0, figure.position.y, 0);
+      figure.rotateY(Math.PI);
+      tankGroup.add(figure);
+      return figure;
+    }
+
+    function makeBalloonRideMesh() {
+      const group = new THREE.Group();
+      const balloon = makeDollarBalloonMesh();
+      balloon.position.y = 29;
+      group.add(balloon);
+
+      const basket = new THREE.Mesh(balloonBasketGeometry, balloonBasketMaterial);
+      basket.position.y = -2;
+      basket.castShadow = true;
+      group.add(basket);
+
+      const ropeMaterial = new THREE.LineBasicMaterial({ color: 0xfff0a6, transparent: true, opacity: 0.78 });
+      for (const sx of [-4.6, 4.6]) {
+        for (const sz of [-3.8, 3.8]) {
+          const rope = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(sx, 5, sz),
+              new THREE.Vector3(sx * 1.35, 17, sz * 1.18)
+            ]),
+            ropeMaterial
+          );
+          group.add(rope);
+        }
+      }
+
+      const mini = new THREE.Group();
+      mini.position.set(0, 3.2, 0);
+      const body = new THREE.Mesh(miniBodyGeometry, miniClothMaterial);
+      const head = new THREE.Mesh(miniHeadGeometry, miniFaceMaterial);
+      head.position.y = 4.4;
+      const hat = new THREE.Mesh(miniHatGeometry, miniHatMaterial);
+      hat.position.y = 6.6;
+      hat.rotation.z = 0.08;
+      mini.add(body, head, hat);
+
+      const leftArmPivot = new THREE.Group();
+      leftArmPivot.position.set(-2.8, 2.1, 0);
+      const leftArm = new THREE.Mesh(miniArmGeometry, miniClothMaterial);
+      leftArm.position.y = -2.4;
+      leftArmPivot.add(leftArm);
+      mini.add(leftArmPivot);
+
+      const rightArmPivot = new THREE.Group();
+      rightArmPivot.position.set(2.8, 2.1, 0);
+      const rightArm = new THREE.Mesh(miniArmGeometry, miniClothMaterial);
+      rightArm.position.y = -2.4;
+      rightArmPivot.add(rightArm);
+      mini.add(rightArmPivot);
+
+      group.add(mini);
+
+      const glow = new THREE.PointLight(0xffd43b, 700, 320);
+      glow.position.y = 18;
+      group.add(glow);
+
+      group.userData = { balloon, basket, mini, leftArmPivot, rightArmPivot, glow };
+      group.scale.setScalar(4);
+      return group;
+    }
+
+    function seedBalloonRide() {
+      if (balloonRide) scene.remove(balloonRide.mesh);
+      const angle = rand(0, Math.PI * 2);
+      const launchDirection = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)).normalize();
+      const floatBaseY = rand(tank.y * 0.2, tank.y * 0.34);
+      balloonRide = {
+        position: new THREE.Vector3(rand(-tank.x * 0.1, tank.x * 0.1), -tank.y / 2 + 28, rand(-tank.z * 0.1, tank.z * 0.1)),
+        velocity: new THREE.Vector3(),
+        wander: launchDirection.clone(),
+        launchDirection,
+        launching: true,
+        floatBaseY,
+        floatPhase: rand(0, Math.PI * 2),
+        nextWander: frame + Math.floor(rand(420, 860)),
+        mesh: makeBalloonRideMesh()
+      };
+      balloonRide.mesh.position.copy(balloonRide.position);
+      scene.add(balloonRide.mesh);
+    }
+
+    function makeBoid(centered = true, isPlayer = false) {
+      const angle = rand(0, Math.PI * 2);
+      const radius = centered ? rand(10, tank.x * 0.16) : rand(0, tank.x * 0.44);
+      const y = centered ? rand(-40, 55) : rand(-tank.y * 0.38, tank.y * 0.38);
+      const boid = {
+        position: new THREE.Vector3(
+          centered ? Math.cos(angle) * radius : rand(-tank.x * 0.45, tank.x * 0.45),
+          y,
+          centered ? Math.sin(angle) * radius * 0.78 : rand(-tank.z * 0.44, tank.z * 0.44)
+        ),
+        velocity: new THREE.Vector3(Math.cos(angle + 0.8), rand(-0.26, 0.26), Math.sin(angle + 0.8)).multiplyScalar(rand(1.1, 2.7)),
+        size: rand(0.82, 1.18),
+        glint: rand(0.52, 1),
+        colorIndex: null,
+        touchMemory: [],
+        alive: true,
+        lastFed: null,
+        isPlayer,
+        wander: new THREE.Vector3(rand(-1, 1), rand(-0.42, 0.42), rand(-1, 1)).normalize(),
+        nextWander: isPlayer ? Math.floor(rand(600, 1080)) : Math.floor(rand(16, 76)),
+        followSwarm: isPlayer,
+        followSwarmIndex: Math.floor(rand(0, 2)),
+        mesh: makeFishMesh(isPlayer)
+      };
+      boid.mesh.scale.setScalar(isPlayer ? 1.36 : boid.size);
+      boid.mesh.position.copy(boid.position);
+      scene.add(boid.mesh);
+      return boid;
+    }
+
+    function seedBoids(count) {
+      for (const b of boids) scene.remove(b.mesh);
+      boids = Array.from({ length: count }, (_, index) => makeBoid(true, index === 0));
+      seedColorCarriers();
+      regenerateFood();
+    }
+
+    function seedColorCarriers() {
+      for (const b of boids) {
+        b.colorIndex = null;
+        b.touchMemory = [];
+        b.alive = true;
+        b.lastFed = null;
+      }
+
+      const picks = [...boids.keys()];
+      for (let i = picks.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [picks[i], picks[j]] = [picks[j], picks[i]];
+      }
+
+      const carriers = Math.min(21, boids.length);
+      for (let i = 0; i < carriers; i++) {
+        boids[picks[i]].colorIndex = i % palette.length;
+        boids[picks[i]].lastFed = performance.now();
+      }
+      boids[0].colorIndex = 2;
+      boids[0].lastFed = performance.now();
+    }
+
+    function matchCount() {
+      const target = Number(controls.count.value);
+      const changed = boids.length !== target;
+      while (boids.length < target) boids.push(makeBoid(false, false));
+      while (boids.length > target) {
+        const b = boids.pop();
+        releaseFoodSlot(b);
+        scene.remove(b.mesh);
+      }
+      if (changed) regenerateFood();
+    }
+
+    function foodQuota() {
+      return Math.floor(boids.length * 0.8);
+    }
+
+    function regenerateFood() {
+      for (const meal of food) scene.remove(meal.mesh);
+      const quota = foodQuota();
+      food = Array.from({ length: quota }, (_, index) => {
+        const colorIndex = index % palette.length;
+        const mesh = new THREE.Mesh(foodGeometry, foodMaterials[colorIndex]);
+        mesh.position.set(
+          rand(-tank.x * 0.46, tank.x * 0.46),
+          rand(-tank.y * 0.34, tank.y * 0.42),
+          rand(-tank.z * 0.43, tank.z * 0.43)
+        );
+        scene.add(mesh);
+        return { colorIndex, mesh };
+      });
+
+      for (let i = food.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [food[i], food[j]] = [food[j], food[i]];
+      }
+      assignFoodSlots(performance.now());
+      nextFoodRegen = performance.now() + foodRegenMs;
+    }
+
+    function steerToward(vector, maxForce) {
+      if (vector.lengthSq() < 0.0001) return new THREE.Vector3();
+      return vector.clone().normalize().multiplyScalar(maxForce);
+    }
+
+    function keepInside(boid) {
+      const margin = 20;
+      const bounds = [
+        ["x", tank.x / 2 - margin],
+        ["y", tank.y / 2 - margin],
+        ["z", tank.z / 2 - margin]
+      ];
+      for (const [axis, limit] of bounds) {
+        if (boid.isPlayer) {
+          if (boid.position[axis] < -limit) {
+            boid.position[axis] = -limit;
+            boid.velocity[axis] = Math.max(Math.abs(boid.velocity[axis]) * 0.35, 0.08);
+          }
+          if (boid.position[axis] > limit) {
+            boid.position[axis] = limit;
+            boid.velocity[axis] = -Math.max(Math.abs(boid.velocity[axis]) * 0.35, 0.08);
+          }
+        } else {
+          if (boid.position[axis] < -limit) {
+            boid.position[axis] = -limit;
+            boid.velocity[axis] = Math.max(Math.abs(boid.velocity[axis]) * 0.72, 0.16);
+            boid.wander[axis] = Math.abs(boid.wander[axis] || 0.2);
+          }
+          if (boid.position[axis] > limit) {
+            boid.position[axis] = limit;
+            boid.velocity[axis] = -Math.max(Math.abs(boid.velocity[axis]) * 0.72, 0.16);
+            boid.wander[axis] = -Math.abs(boid.wander[axis] || 0.2);
+          }
+        }
+      }
+    }
+
+    function updatePilot(boid) {
+      const forward = viewDirection();
+      const right = rightFromDirection(forward);
+      const thrust = new THREE.Vector3();
+      if (keys.has("KeyW") || keys.has("ArrowUp")) thrust.add(forward);
+      if (keys.has("KeyS") || keys.has("ArrowDown")) thrust.sub(forward);
+      if (keys.has("KeyA") || keys.has("ArrowLeft")) thrust.sub(right);
+      if (keys.has("KeyD") || keys.has("ArrowRight")) thrust.add(right);
+      if (keys.has("Space")) thrust.y += 0.8;
+      if (keys.has("ShiftLeft") || keys.has("ShiftRight")) thrust.y -= 0.8;
+      if (thrust.lengthSq() > 0) boid.velocity.add(thrust.normalize().multiplyScalar(0.18));
+    }
+
+    function updatePlayerCourse(boid) {
+      if (frame >= boid.nextWander) {
+        boid.wander.set(rand(-1, 1), rand(-0.32, 0.32), rand(-1, 1)).normalize();
+        boid.followSwarm = Math.random() < 0.8;
+        boid.followSwarmIndex = Math.floor(rand(0, 2));
+        boid.nextWander = frame + Math.floor(rand(600, 1080));
+      }
+
+      const manualInput = keys.has("KeyW") || keys.has("ArrowUp") ||
+        keys.has("KeyS") || keys.has("ArrowDown") ||
+        keys.has("KeyA") || keys.has("ArrowLeft") ||
+        keys.has("KeyD") || keys.has("ArrowRight") ||
+        keys.has("Space") || keys.has("ShiftLeft") || keys.has("ShiftRight");
+
+      if (!manualInput) {
+        const desired = boid.followSwarm ? playerSwarmFollowVelocity(boid) : boid.wander.clone();
+        boid.velocity.lerp(desired.multiplyScalar(Number(controls.speed.value) * 0.78), boid.followSwarm ? 0.018 : 0.012);
+      }
+    }
+
+    function stormCenters() {
+      const t = frame * 0.012;
+      return [
+        new THREE.Vector3(
+          Math.sin(t * 0.73) * tank.x * 0.19,
+          Math.sin(t * 0.51) * tank.y * 0.16,
+          Math.cos(t * 0.61) * tank.z * 0.22
+        ),
+        new THREE.Vector3(
+          Math.cos(t * 0.47 + 1.7) * tank.x * 0.23,
+          Math.sin(t * 0.69 + 0.9) * tank.y * 0.12,
+          Math.sin(t * 0.58 + 2.4) * tank.z * 0.2
+        )
+      ];
+    }
+
+    function playerSwarmFollowVelocity(boid) {
+      const centers = stormCenters();
+      const center = centers[boid.followSwarmIndex % centers.length];
+      const swarmCenter = new THREE.Vector3();
+      const swarmVelocity = new THREE.Vector3();
+      let total = 0;
+
+      for (const other of boids) {
+        if (other.isPlayer || !other.alive) continue;
+        if (other.position.distanceTo(center) > 135) continue;
+        swarmCenter.add(other.position);
+        swarmVelocity.add(other.velocity);
+        total++;
+      }
+
+      if (total > 0) {
+        swarmCenter.divideScalar(total);
+        swarmVelocity.divideScalar(total);
+      } else {
+        swarmCenter.copy(center);
+      }
+
+      const toSwarm = swarmCenter.clone().sub(boid.position);
+      const follow = toSwarm.lengthSq() > 0.001 ? toSwarm.normalize() : boid.wander.clone();
+      if (swarmVelocity.lengthSq() > 0.001) follow.add(swarmVelocity.normalize().multiplyScalar(0.85));
+      return follow.normalize();
+    }
+
+    function applyStormField(boid, strength) {
+      if (boid.isPlayer || strength <= 0) return;
+
+      const centers = stormCenters();
+      let nearest = centers[0];
+      let offset = boid.position.clone().sub(nearest);
+      let dist = offset.length();
+      for (let i = 1; i < centers.length; i++) {
+        const candidateOffset = boid.position.clone().sub(centers[i]);
+        const candidateDist = candidateOffset.length();
+        if (candidateDist < dist) {
+          nearest = centers[i];
+          offset = candidateOffset;
+          dist = candidateDist;
+        }
+      }
+
+      const safeDist = Math.max(1, dist);
+      const radial = offset.clone().divideScalar(safeDist);
+      const tangent = new THREE.Vector3(-radial.z, Math.sin(frame * 0.018 + boid.position.x * 0.02) * 0.22, radial.x).normalize();
+      const shell = 82 + Math.sin(frame * 0.035 + boid.glint * 8) * 28;
+      const compression = clamp((safeDist - shell) / 160, -0.55, 0.8);
+      const fold = new THREE.Vector3(
+        Math.sin(frame * 0.029 + boid.position.z * 0.035),
+        Math.cos(frame * 0.021 + boid.position.x * 0.026) * 0.55,
+        Math.sin(frame * 0.025 + boid.position.y * 0.043)
+      ).normalize();
+      const surge = 0.72 + 0.28 * Math.sin(frame * 0.075 + boid.glint * 11);
+
+      boid.velocity
+        .add(radial.multiplyScalar(-compression * strength * 0.16))
+        .add(tangent.multiplyScalar(strength * 0.12 * surge))
+        .add(fold.multiplyScalar(strength * 0.035));
+    }
+
+    function updateTurtles(delta) {
+      const margin = 28;
+      const limits = {
+        x: tank.x / 2 - margin,
+        y: tank.y / 2 - margin,
+        z: tank.z / 2 - margin
+      };
+
+      for (const turtle of turtles) {
+        if (frame >= turtle.nextWander) {
+          turtle.wander.set(rand(-1, 1), rand(-0.1, 0.1), rand(-1, 1)).normalize();
+          turtle.nextWander = frame + Math.floor(rand(220, 520));
+        }
+
+        turtle.velocity.lerp(turtle.wander.clone().multiplyScalar(0.46), 0.01);
+        turtle.position.addScaledVector(turtle.velocity, delta * 60);
+
+        for (const axis of ["x", "y", "z"]) {
+          if (turtle.position[axis] < -limits[axis]) {
+            turtle.position[axis] = -limits[axis];
+            turtle.velocity[axis] = Math.abs(turtle.velocity[axis]) * 0.55;
+            turtle.wander[axis] = Math.abs(turtle.wander[axis] || 0.1);
+          }
+          if (turtle.position[axis] > limits[axis]) {
+            turtle.position[axis] = limits[axis];
+            turtle.velocity[axis] = -Math.abs(turtle.velocity[axis]) * 0.55;
+            turtle.wander[axis] = -Math.abs(turtle.wander[axis] || 0.1);
+          }
+        }
+
+        turtle.mesh.position.copy(turtle.position);
+        if (turtle.velocity.lengthSq() > 0.0001) {
+          turtle.mesh.lookAt(turtle.position.clone().add(turtle.velocity));
+        }
+
+        const flap = Math.sin(frame * 0.055 + turtle.phase);
+        turtle.mesh.userData.glow.intensity = 260 + (flap + 1) * 85;
+        const flippers = turtle.mesh.userData.flippers;
+        flippers.frontLeft.rotation.z = 0.22 + flap * 0.38;
+        flippers.frontRight.rotation.z = -0.22 - flap * 0.38;
+        flippers.backLeft.rotation.z = -0.18 - flap * 0.24;
+        flippers.backRight.rotation.z = 0.18 + flap * 0.24;
+        flippers.frontLeft.rotation.x = flap * 0.18;
+        flippers.frontRight.rotation.x = -flap * 0.18;
+        flippers.backLeft.rotation.x = -flap * 0.12;
+        flippers.backRight.rotation.x = flap * 0.12;
+      }
+    }
+
+    function updateBalloonRide(delta) {
+      if (!balloonRide) return;
+      const margin = 150;
+      const minLimits = {
+        x: -tank.x / 2 + margin,
+        y: -tank.y / 2 + 32,
+        z: -tank.z / 2 + margin
+      };
+      const maxLimits = {
+        x: tank.x / 2 - margin,
+        y: tank.y / 2 - 180,
+        z: tank.z / 2 - margin
+      };
+
+      if (!balloonRide.launching && frame >= balloonRide.nextWander) {
+        balloonRide.wander.set(rand(-1, 1), 0, rand(-1, 1)).normalize();
+        balloonRide.floatBaseY = rand(tank.y * 0.18, tank.y * 0.36);
+        balloonRide.nextWander = frame + Math.floor(rand(420, 860));
+      }
+
+      const fishSpeed = Number(controls.speed.value);
+      const targetSpeed = Math.max(0.08, fishSpeed * 0.2);
+      if (balloonRide.launching) {
+        const launchAngle = Math.PI / 6;
+        const climb = balloonRide.launchDirection.clone()
+          .multiplyScalar(Math.cos(launchAngle))
+          .add(new THREE.Vector3(0, Math.sin(launchAngle), 0));
+        balloonRide.velocity.lerp(climb.multiplyScalar(targetSpeed), 0.018);
+        if (balloonRide.position.y >= balloonRide.floatBaseY) {
+          balloonRide.launching = false;
+          balloonRide.velocity.y *= 0.25;
+          balloonRide.nextWander = frame + Math.floor(rand(240, 520));
+        }
+      } else {
+        balloonRide.velocity.lerp(balloonRide.wander.clone().multiplyScalar(targetSpeed), 0.006);
+        const floatingY = balloonRide.floatBaseY + Math.sin(frame * 0.008 + balloonRide.floatPhase) * 34;
+        balloonRide.velocity.y = (floatingY - balloonRide.position.y) * 0.006;
+      }
+      balloonRide.position.addScaledVector(balloonRide.velocity, delta * 60);
+
+      for (const axis of ["x", "y", "z"]) {
+        if (balloonRide.position[axis] < minLimits[axis]) {
+          balloonRide.position[axis] = minLimits[axis];
+          balloonRide.velocity[axis] = Math.abs(balloonRide.velocity[axis]) * 0.45;
+          balloonRide.wander[axis] = Math.abs(balloonRide.wander[axis] || 0.1);
+        }
+        if (balloonRide.position[axis] > maxLimits[axis]) {
+          balloonRide.position[axis] = maxLimits[axis];
+          balloonRide.velocity[axis] = -Math.abs(balloonRide.velocity[axis]) * 0.45;
+          balloonRide.wander[axis] = -Math.abs(balloonRide.wander[axis] || 0.1);
+        }
+      }
+
+      const bob = Math.sin(frame * 0.024 + balloonRide.floatPhase) * 4.5;
+      balloonRide.mesh.position.copy(balloonRide.position).add(new THREE.Vector3(0, bob, 0));
+      balloonRide.mesh.rotation.set(
+        Math.sin(frame * 0.011 + balloonRide.floatPhase) * 0.035,
+        Math.sin(frame * 0.006 + balloonRide.floatPhase) * 0.12,
+        Math.cos(frame * 0.01 + balloonRide.floatPhase) * 0.035
+      );
+
+      const wave = Math.sin(frame * 0.12);
+      const oppositeWave = Math.sin(frame * 0.12 + Math.PI * 0.72);
+      balloonRide.mesh.userData.leftArmPivot.rotation.z = 0.9 + wave * 0.75;
+      balloonRide.mesh.userData.rightArmPivot.rotation.z = -0.9 - oppositeWave * 0.75;
+      balloonRide.mesh.userData.mini.rotation.y = Math.sin(frame * 0.035) * 0.28;
+      balloonRide.mesh.userData.balloon.scale.setScalar(1 + Math.sin(frame * 0.018) * 0.025);
+      balloonRide.mesh.userData.glow.intensity = 600 + (wave + 1) * 140;
+    }
+
+    function updateBoids(now, delta) {
+      const ballWeight = Number(controls.separation.value);
+      const aliWeight = Number(controls.alignment.value);
+      const scatterWeight = Number(controls.cohesion.value);
+      const maxSpeed = Number(controls.speed.value);
+      const stormWeight = Number(controls.storm.value);
+      const perception = 58;
+      const avoidDistance = 18;
+      const forceLimit = 0.052;
+
+      for (const b of boids) {
+        if (!b.alive) continue;
+        let total = 0;
+        const sep = new THREE.Vector3();
+        const ali = new THREE.Vector3();
+        const coh = new THREE.Vector3();
+
+        for (const other of boids) {
+          if (other === b || !other.alive) continue;
+          const offset = other.position.clone().sub(b.position);
+          const dist = offset.length();
+          if (dist > 0 && dist < perception) {
+            total++;
+            ali.add(other.velocity);
+            coh.add(other.position);
+            if (dist < avoidDistance) {
+              sep.add(offset.multiplyScalar(-(avoidDistance - dist) / avoidDistance / dist));
+            }
+          }
+        }
+
+        if (total > 0) {
+          ali.divideScalar(total);
+          coh.divideScalar(total).sub(b.position);
+          const socialScale = b.isPlayer ? 0.24 : 1;
+          b.velocity.add(steerToward(sep, forceLimit * 1.9).multiplyScalar(scatterWeight * socialScale));
+          b.velocity.add(steerToward(ali, forceLimit).multiplyScalar(aliWeight * socialScale));
+          b.velocity.add(steerToward(coh, forceLimit).multiplyScalar(ballWeight * socialScale));
+        }
+
+        const centerPull = b.position.clone().multiplyScalar(b.isPlayer ? -0.0002 : -0.00007);
+        const current = new THREE.Vector3(
+          Math.sin(frame * 0.017 + b.position.y * 0.061 + b.position.z * 0.033),
+          Math.sin(frame * 0.013 + b.position.x * 0.047) * 0.58,
+          Math.cos(frame * 0.019 + b.position.x * 0.037 - b.position.y * 0.041)
+        ).multiplyScalar(b.isPlayer ? 0.01 : 0.008);
+
+        if (!b.isPlayer && frame >= b.nextWander) {
+          b.wander.set(rand(-1, 1), rand(-0.52, 0.52), rand(-1, 1)).normalize();
+          b.nextWander = frame + Math.floor(rand(18, 88));
+        }
+
+        b.velocity.add(centerPull).add(current);
+        if (!b.isPlayer) {
+          const jitter = new THREE.Vector3(rand(-1, 1), rand(-0.5, 0.5), rand(-1, 1)).normalize().multiplyScalar(0.012);
+          b.velocity.add(b.wander.clone().multiplyScalar(0.082)).add(jitter);
+          applyStormField(b, stormWeight);
+        }
+        if (b.isPlayer) {
+          updatePlayerCourse(b);
+          updatePilot(b);
+        }
+
+        const boidMaxSpeed = b.isPlayer ? maxSpeed : maxSpeed * (1 + stormWeight * 0.2);
+        if (b.velocity.length() > boidMaxSpeed) b.velocity.normalize().multiplyScalar(boidMaxSpeed);
+      }
+
+      for (const b of boids) {
+        if (!b.alive) continue;
+        b.position.addScaledVector(b.velocity, delta * 60);
+        keepInside(b);
+        syncFishMesh(b);
+      }
+
+      spreadColor();
+      updateFood(now);
+      animateFood(now);
+    }
+
+    function syncFishMesh(b) {
+      b.mesh.position.copy(b.position);
+      b.mesh.visible = b.alive && (!b.isPlayer || !pilotMode);
+      if (b.velocity.lengthSq() > 0.0001) {
+        const target = b.position.clone().add(b.velocity);
+        b.mesh.lookAt(target);
+      }
+      if (b.isPlayer) {
+        const blink = 0.5 + 0.5 * Math.sin(frame * 0.18);
+        playerMaterial.color.copy(playerGold).lerp(playerBlinkGold, blink);
+        playerMaterial.emissive.copy(playerGold).lerp(playerBlinkGold, blink);
+        playerMaterial.emissiveIntensity = 0.65 + blink * 0.85;
+      }
+      const material = b.isPlayer ? playerMaterial : (b.colorIndex === null ? ghostMaterial : colorMaterials[b.colorIndex]);
+      b.mesh.children[0].material = material;
+      b.mesh.children[1].material = material;
+      const tail = b.mesh.children[1];
+      tail.rotation.y = Math.sin(frame * 0.32 + b.position.x * 0.02) * 0.42;
+    }
+
+    function spreadColor() {
+      const touchDistance = 14;
+      for (let i = 0; i < boids.length; i++) {
+        const a = boids[i];
+        if (!a.alive) continue;
+        for (let j = i + 1; j < boids.length; j++) {
+          const b = boids[j];
+          if (!b.alive) continue;
+          if (a.colorIndex === null && b.colorIndex === null) continue;
+          if (a.position.distanceTo(b.position) > touchDistance) continue;
+          if (a.colorIndex !== null) rememberTouch(b, a.colorIndex);
+          if (b.colorIndex !== null) rememberTouch(a, b.colorIndex);
+        }
+      }
+    }
+
+    function rememberTouch(boid, colorIndex) {
+      if (!boid.alive) return;
+      boid.touchMemory.push(colorIndex);
+      if (boid.touchMemory.length > 3) boid.touchMemory.shift();
+      const votes = new Map();
+      for (const color of boid.touchMemory) votes.set(color, (votes.get(color) || 0) + 1);
+      for (const [color, count] of votes) {
+        if (count >= 2) {
+          const now = performance.now();
+          if (boid.colorIndex !== color) releaseFoodSlot(boid);
+          if (boid.colorIndex === null) boid.lastFed = now;
+          boid.colorIndex = color;
+          tryAssignFoodSlot(boid, now);
+          return;
+        }
+      }
+    }
+
+    function updateFood(now) {
+      if (now >= nextFoodRegen) regenerateFood();
+      sustainFedFish(now);
+      const player = boids[0];
+      if (player?.isPlayer) {
+        player.alive = true;
+        player.lastFed = now;
+      }
+      for (const b of boids) {
+        if (!b.alive || b.isPlayer) continue;
+        if (b.colorIndex !== null && b.lastFed !== null && now - b.lastFed > starvationMs) {
+          releaseFoodSlot(b);
+          b.alive = false;
+          b.mesh.visible = false;
+          b.velocity.set(0, 0, 0);
+        }
+      }
+    }
+
+    function animateFood(now) {
+      for (let i = 0; i < food.length; i++) {
+        const meal = food[i];
+        meal.mesh.rotation.y += 0.012;
+        meal.mesh.position.y += Math.sin(now * 0.0015 + i) * 0.008;
+      }
+    }
+
+    function assignFoodSlots(now) {
+      fedAssignments = new Map();
+      foodCapacity = new Array(palette.length).fill(0);
+      foodUsed = new Array(palette.length).fill(0);
+      for (const meal of food) foodCapacity[meal.colorIndex]++;
+
+      const candidates = boids.filter((b) => b.alive && b.colorIndex !== null);
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      for (const b of candidates) tryAssignFoodSlot(b, now);
+    }
+
+    function tryAssignFoodSlot(boid, now) {
+      if (!boid.alive || boid.colorIndex === null) return false;
+      if (fedAssignments.get(boid) === boid.colorIndex) {
+        boid.lastFed = now;
+        return true;
+      }
+      if (foodUsed[boid.colorIndex] >= foodCapacity[boid.colorIndex]) return false;
+      foodUsed[boid.colorIndex]++;
+      fedAssignments.set(boid, boid.colorIndex);
+      boid.lastFed = now;
+      return true;
+    }
+
+    function releaseFoodSlot(boid) {
+      const colorIndex = fedAssignments.get(boid);
+      if (colorIndex === undefined) return;
+      foodUsed[colorIndex] = Math.max(0, foodUsed[colorIndex] - 1);
+      fedAssignments.delete(boid);
+    }
+
+    function sustainFedFish(now) {
+      for (const [b, colorIndex] of fedAssignments) {
+        if (!b.alive || b.colorIndex !== colorIndex) {
+          releaseFoodSlot(b);
+          continue;
+        }
+        b.lastFed = now;
+      }
+    }
+
+    function updateCamera(delta) {
+      const player = boids[0];
+      if (!player) return;
+      if (debugMoai) {
+        const moai = moaiAnchor();
+        const faceTarget = moai.clone().add(new THREE.Vector3(0, tank.y * 0.36, 0));
+        const viewFromCenter = new THREE.Vector3(0, moai.y, 0).sub(moai).normalize();
+        const debugEye = faceTarget.clone()
+          .add(viewFromCenter.multiplyScalar(520))
+          .add(new THREE.Vector3(0, 58, 0));
+        camera.position.lerp(debugEye, clamp(delta * 10, 0, 1));
+        camera.lookAt(faceTarget);
+        player.mesh.visible = true;
+        return;
+      }
+      if (pilotMode) {
+        const forward = viewDirection();
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        let right = new THREE.Vector3().crossVectors(forward, worldUp);
+        if (right.lengthSq() < 0.0001) right = new THREE.Vector3(1, 0, 0);
+        right.normalize();
+        const cameraUp = new THREE.Vector3().crossVectors(right, forward).normalize();
+        const pan = right.multiplyScalar(panX).add(cameraUp.multiplyScalar(panY));
+        const eye = player.position.clone().add(forward.clone().multiplyScalar(8)).add(new THREE.Vector3(0, 3.2, 0)).add(pan);
+        camera.position.lerp(eye, clamp(delta * 12, 0, 1));
+        camera.lookAt(eye.clone().add(forward.clone().multiplyScalar(140)));
+        player.mesh.visible = false;
+      } else {
+        const tankView = new THREE.Vector3(1720, 660, 1340);
+        camera.position.lerp(tankView, clamp(delta * 2.1, 0, 1));
+        camera.lookAt(0, 0, 0);
+        player.mesh.visible = player.alive;
+      }
+    }
+
+    function buildColorCounts() {
+      colorCountsBody.innerHTML = palette.map((color, index) => `
+        <div class="counter-row" data-color-index="${index}" style="--swatch: ${color.value}">
+          <span class="counter-bar"></span>
+          <span class="counter-label"><span class="swatch"></span>${color.name}</span>
+          <span class="counter-percent">0%</span>
+          <span class="counter-count">0</span>
+        </div>
+      `).join("");
+    }
+
+    function updateColorCounts() {
+      const counts = new Array(palette.length).fill(0);
+      let colored = 0;
+      let alive = 0;
+      for (const b of boids) {
+        if (!b.alive) continue;
+        alive++;
+        if (b.colorIndex !== null) {
+          counts[b.colorIndex]++;
+          colored++;
+        }
+      }
+
+      colorTotal.textContent = `${colored} / ${alive} alive`;
+      foodStatus.textContent = `food slots ${food.length} / ${foodQuota()}`;
+      regenStatus.textContent = `regen ${Math.max(0, Math.ceil((nextFoodRegen - performance.now()) / 1000))}s`;
+      for (let index = 0; index < palette.length; index++) {
+        const row = colorCountsBody.querySelector(`[data-color-index="${index}"]`);
+        const percent = counts[index] / Math.max(1, alive) * 100;
+        const bar = row.querySelector(".counter-bar");
+        bar.style.width = `${percent}%`;
+        bar.style.minWidth = counts[index] > 0 ? "4px" : "0";
+        row.querySelector(".counter-percent").textContent = `${Math.round(percent)}%`;
+        row.querySelector(".counter-count").textContent = counts[index];
+      }
+    }
+
+    function renderTankFrame() {
+      if (tankFrame.classList.contains("hidden")) return;
+
+      const rect = tankMap.getBoundingClientRect();
+      const mapDpr = Math.min(window.devicePixelRatio || 1, 2);
+      const pixelWidth = Math.max(1, Math.floor(rect.width * mapDpr));
+      const pixelHeight = Math.max(1, Math.floor(rect.height * mapDpr));
+      if (tankMap.width !== pixelWidth || tankMap.height !== pixelHeight) {
+        tankMap.width = pixelWidth;
+        tankMap.height = pixelHeight;
+      }
+
+      tankMapCtx.setTransform(mapDpr, 0, 0, mapDpr, 0, 0);
+      const w = rect.width;
+      const h = rect.height;
+      tankMapCtx.clearRect(0, 0, w, h);
+      tankMapCtx.fillStyle = "rgba(3, 11, 14, 0.76)";
+      tankMapCtx.fillRect(0, 0, w, h);
+
+      const pad = 14;
+      const innerW = w - pad * 2;
+      const innerH = h - pad * 2;
+      tankMapCtx.strokeStyle = "rgba(155, 238, 250, 0.42)";
+      tankMapCtx.lineWidth = 1;
+      tankMapCtx.strokeRect(pad, pad, innerW, innerH);
+
+      const mapX = (x) => pad + (x / tank.x + 0.5) * innerW;
+      const mapY = (z) => pad + (z / tank.z + 0.5) * innerH;
+
+      const stormWeight = Number(controls.storm.value);
+      if (stormWeight > 0) {
+        tankMapCtx.globalCompositeOperation = "lighter";
+        for (const center of stormCenters()) {
+          const x = mapX(center.x);
+          const y = mapY(center.z);
+          const pulse = 0.5 + 0.5 * Math.sin(frame * 0.08 + center.x * 0.01);
+          tankMapCtx.globalAlpha = 0.1 + stormWeight * 0.045;
+          tankMapCtx.strokeStyle = "#70d7e8";
+          tankMapCtx.lineWidth = 1;
+          tankMapCtx.beginPath();
+          tankMapCtx.arc(x, y, 18 + pulse * 16, 0, Math.PI * 2);
+          tankMapCtx.stroke();
+          tankMapCtx.globalAlpha = 0.16 + stormWeight * 0.055;
+          tankMapCtx.fillStyle = "#70d7e8";
+          tankMapCtx.beginPath();
+          tankMapCtx.arc(x, y, 3 + pulse * 2, 0, Math.PI * 2);
+          tankMapCtx.fill();
+        }
+      }
+
+      tankMapCtx.globalCompositeOperation = "lighter";
+      for (const meal of food) {
+        const x = mapX(meal.mesh.position.x);
+        const y = mapY(meal.mesh.position.z);
+        tankMapCtx.fillStyle = palette[meal.colorIndex].value;
+        tankMapCtx.globalAlpha = 0.42;
+        tankMapCtx.beginPath();
+        tankMapCtx.arc(x, y, 1.5, 0, Math.PI * 2);
+        tankMapCtx.fill();
+      }
+
+      for (const b of boids) {
+        if (!b.alive) continue;
+        const x = mapX(b.position.x);
+        const y = mapY(b.position.z);
+
+        if (b.isPlayer) {
+          const playerBlink = 0.5 + 0.5 * Math.sin(frame * 0.22);
+          const haloRadius = 6 + playerBlink * 5;
+          tankMapCtx.globalAlpha = 0.34 + playerBlink * 0.46;
+          tankMapCtx.fillStyle = "#ffd166";
+          tankMapCtx.beginPath();
+          tankMapCtx.arc(x, y, haloRadius, 0, Math.PI * 2);
+          tankMapCtx.fill();
+
+          tankMapCtx.globalAlpha = 1;
+          tankMapCtx.fillStyle = playerBlink > 0.5 ? "#fff2a6" : "#ffd166";
+          tankMapCtx.beginPath();
+          tankMapCtx.arc(x, y, 4.5, 0, Math.PI * 2);
+          tankMapCtx.fill();
+
+          const dir = viewDirection();
+          tankMapCtx.strokeStyle = "rgba(255, 242, 166, 0.92)";
+          tankMapCtx.lineWidth = 1.4;
+          tankMapCtx.beginPath();
+          tankMapCtx.moveTo(x, y);
+          tankMapCtx.lineTo(x + dir.x * 18, y + dir.z * 18);
+          tankMapCtx.stroke();
+        } else {
+          tankMapCtx.globalAlpha = 0.72;
+          tankMapCtx.fillStyle = b.colorIndex === null ? "rgba(224, 240, 244, 0.7)" : palette[b.colorIndex].value;
+          tankMapCtx.beginPath();
+          tankMapCtx.arc(x, y, 2.4, 0, Math.PI * 2);
+          tankMapCtx.fill();
+        }
+      }
+      tankMapCtx.globalAlpha = 1;
+      tankMapCtx.globalCompositeOperation = "source-over";
+    }
+
+    function syncOutputs() {
+      for (const input of Object.values(controls)) {
+        input.nextElementSibling.value = input.id === "zoom" ? `${Number(input.value).toFixed(2)}x` : input.value;
+      }
+      camera.fov = clamp(74 / Number(controls.zoom.value), 32, 150);
+      camera.updateProjectionMatrix();
+    }
+
+    function adjustZoom(amount) {
+      const next = clamp(Number(controls.zoom.value) + amount, Number(controls.zoom.min), Number(controls.zoom.max));
+      controls.zoom.value = next.toFixed(2);
+      syncOutputs();
+    }
+
+    function resize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function tick(now) {
+      frame++;
+      const delta = clamp((now - lastTime) / 1000, 0.001, 0.033);
+      matchCount();
+      updateBoids(now, delta);
+      updateTurtles(delta);
+      updateBalloonRide(delta);
+      updateCamera(delta);
+      renderer.render(scene, camera);
+      renderTankFrame();
+
+      if (frame % 18 === 0) {
+        const fps = Math.round(1 / delta);
+        const alive = boids.filter((b) => b.alive).length;
+        fpsLabel.textContent = `${alive} fish ${fps}fps`;
+        updateColorCounts();
+      }
+      lastTime = now;
+      requestAnimationFrame(tick);
+    }
+
+    for (const input of Object.values(controls)) input.addEventListener("input", syncOutputs);
+
+    cameraModeButton.addEventListener("click", () => {
+      pilotMode = true;
+      cameraModeButton.classList.add("active");
+      cameraModeButton.textContent = "fish view";
+    });
+
+    toggleTankFrameButton.addEventListener("click", () => {
+      const hidden = tankFrame.classList.toggle("hidden");
+      toggleTankFrameButton.classList.toggle("active", !hidden);
+      toggleTankFrameButton.textContent = hidden ? "Show frame" : "Hide frame";
+    });
+
+    for (const button of lookButtons) {
+      button.addEventListener("click", () => setLookMode(button.dataset.look));
+    }
+
+    togglePanelButton.addEventListener("click", () => {
+      const collapsed = hud.classList.toggle("collapsed");
+      togglePanelButton.textContent = collapsed ? "Show" : "Hide";
+      togglePanelButton.setAttribute("aria-expanded", String(!collapsed));
+    });
+
+    hud.addEventListener("click", (event) => {
+      if (!hud.classList.contains("collapsed") || event.target === togglePanelButton) return;
+      hud.classList.remove("collapsed");
+      togglePanelButton.textContent = "Hide";
+      togglePanelButton.setAttribute("aria-expanded", "true");
+    });
+
+    toggleCounterButton.addEventListener("click", () => {
+      const hidden = counter.classList.toggle("hidden");
+      toggleCounterButton.textContent = hidden ? "Show colors" : "Hide colors";
+      toggleCounterButton.setAttribute("aria-expanded", String(!hidden));
+    });
+
+    window.addEventListener("keydown", (event) => {
+      keys.add(event.code);
+      if (event.code === "KeyR") setLookMode("forward");
+      if (event.code === "KeyF") setLookMode("level");
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
+    });
+
+    window.addEventListener("keyup", (event) => keys.delete(event.code));
+
+    window.addEventListener("pointerdown", (event) => {
+      if (event.target !== canvas) return;
+      pointerDown = true;
+      canvas.setPointerCapture(event.pointerId);
+    });
+
+    window.addEventListener("pointerup", (event) => {
+      pointerDown = false;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    });
+
+    window.addEventListener("pointercancel", (event) => {
+      pointerDown = false;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    });
+
+    window.addEventListener("pointermove", (event) => {
+      if (!pointerDown) return;
+      panX = clamp(panX - event.movementX * 0.12, -48, 48);
+      panY = clamp(panY + event.movementY * 0.12, -34, 34);
+    });
+
+    window.addEventListener("resize", resize);
+
+    syncOutputs();
+    buildColorCounts();
+    seedBoids(Number(controls.count.value));
+    makeMoaiFigure();
+    seedTurtles();
+    seedBalloonRide();
+    updateColorCounts();
+    resize();
+    camera.position.set(0, 4, 18);
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
