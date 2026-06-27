@@ -46,6 +46,16 @@
 
     #world:active { cursor: grabbing; }
 
+    body.landscape-view #world {
+      inset: auto;
+      top: 50%;
+      left: 50%;
+      width: 100vh;
+      height: 100vw;
+      transform: translate(-50%, -50%) rotate(90deg);
+      transform-origin: center;
+    }
+
     .hud {
       position: fixed;
       top: max(16px, env(safe-area-inset-top));
@@ -357,6 +367,12 @@
     body.wide-view .fullscreen-toggle {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    body.landscape-view .fullscreen-toggle {
+      top: max(10px, env(safe-area-inset-top));
+      min-width: 88px;
+      min-height: 34px;
     }
 
     .counter.collapsed {
@@ -2033,10 +2049,21 @@
       syncOutputs();
     }
 
+    function shouldRotateLandscape() {
+      return document.body.classList.contains("wide-view") && window.innerHeight > window.innerWidth;
+    }
+
+    function syncWideViewClass() {
+      document.body.classList.toggle("landscape-view", shouldRotateLandscape());
+    }
+
     function resize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      syncWideViewClass();
+      const renderWidth = shouldRotateLandscape() ? window.innerHeight : window.innerWidth;
+      const renderHeight = shouldRotateLandscape() ? window.innerWidth : window.innerHeight;
+      camera.aspect = renderWidth / renderHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(renderWidth, renderHeight, false);
     }
 
     function fullscreenElement() {
@@ -2052,6 +2079,7 @@
 
     function enterFullscreen() {
       document.body.classList.add("wide-view");
+      syncWideViewClass();
       updateFullscreenButton();
       resize();
     }
@@ -2059,6 +2087,7 @@
     async function exitFullscreen() {
       const exit = document.exitFullscreen || document.webkitExitFullscreen;
       document.body.classList.remove("wide-view");
+      document.body.classList.remove("landscape-view");
       updateFullscreenButton();
       if (fullscreenElement() && exit) {
         try {
@@ -2074,6 +2103,7 @@
     function handleFullscreenChange() {
       if (!fullscreenElement()) {
         document.body.classList.remove("wide-view");
+        document.body.classList.remove("landscape-view");
       }
       updateFullscreenButton();
       resize();
