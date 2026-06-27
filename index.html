@@ -275,6 +275,90 @@
       bottom: min(356px, calc(100vh - 52px));
     }
 
+    .fullscreen-toggle {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      left: 50%;
+      z-index: 4;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-width: 94px;
+      min-height: 38px;
+      padding: 0 14px;
+      transform: translateX(-50%);
+      border-color: rgba(155, 238, 250, 0.32);
+      background: rgba(12, 20, 23, 0.82);
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(16px);
+      white-space: nowrap;
+    }
+
+    .fullscreen-icon {
+      position: relative;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(243, 251, 252, 0.42);
+      border-radius: 3px;
+    }
+
+    .fullscreen-icon span {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-color: currentColor;
+      opacity: 0.92;
+    }
+
+    .fullscreen-icon span:nth-child(1) {
+      top: 3px;
+      left: 3px;
+      border-top: 2px solid;
+      border-left: 2px solid;
+    }
+
+    .fullscreen-icon span:nth-child(2) {
+      top: 3px;
+      right: 3px;
+      border-top: 2px solid;
+      border-right: 2px solid;
+    }
+
+    .fullscreen-icon span:nth-child(3) {
+      right: 3px;
+      bottom: 3px;
+      border-right: 2px solid;
+      border-bottom: 2px solid;
+    }
+
+    .fullscreen-icon span:nth-child(4) {
+      bottom: 3px;
+      left: 3px;
+      border-bottom: 2px solid;
+      border-left: 2px solid;
+    }
+
+    .fullscreen-toggle.active,
+    body.wide-view .fullscreen-toggle {
+      border-color: rgba(155, 238, 250, 0.72);
+      background: rgba(31, 86, 96, 0.72);
+    }
+
+    body.wide-view .hud,
+    body.wide-view .tank-frame,
+    body.wide-view .counter,
+    body.wide-view .counter-float {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    body.wide-view .fullscreen-toggle {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
     .counter.collapsed {
       width: min(124px, calc(100vw - 32px));
     }
@@ -430,6 +514,13 @@
         bottom: min(352px, calc(100vh - 48px));
       }
 
+      .fullscreen-toggle {
+        top: 10px;
+        min-width: 88px;
+        min-height: 34px;
+        padding: 0 12px;
+      }
+
       .tank-frame {
         top: auto;
         right: auto;
@@ -558,11 +649,23 @@
       .counter:not(.hidden) + .counter-float {
         bottom: min(310px, calc(100vh - 42px));
       }
+
+      .fullscreen-toggle {
+        top: var(--edge-b);
+        left: 50%;
+        min-height: 30px;
+        min-width: 78px;
+        padding: 0 10px;
+      }
     }
   </style>
 </head>
 <body>
   <canvas id="world" aria-label="Three-dimensional Jackfish tank simulation"></canvas>
+  <button id="fullscreenToggle" class="fullscreen-toggle" type="button" aria-pressed="false">
+    <span class="fullscreen-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+    <span class="fullscreen-label">Enlarge</span>
+  </button>
 
   <section class="hud collapsed" aria-label="Simulation controls">
     <div class="topbar">
@@ -656,6 +759,8 @@
     };
     const fpsLabel = document.getElementById("fps");
     const cameraModeButton = document.getElementById("cameraMode");
+    const fullscreenToggleButton = document.getElementById("fullscreenToggle");
+    const fullscreenToggleLabel = fullscreenToggleButton.querySelector(".fullscreen-label");
     const tankFrame = document.getElementById("tankFrame");
     const tankMap = document.getElementById("tankMap");
     const tankMapCtx = tankMap.getContext("2d");
@@ -1934,6 +2039,46 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
+    function fullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function updateFullscreenButton() {
+      const active = document.body.classList.contains("wide-view");
+      fullscreenToggleButton.classList.toggle("active", active);
+      fullscreenToggleLabel.textContent = active ? "Exit full" : "Enlarge";
+      fullscreenToggleButton.setAttribute("aria-pressed", String(active));
+    }
+
+    function enterFullscreen() {
+      document.body.classList.add("wide-view");
+      updateFullscreenButton();
+      resize();
+    }
+
+    async function exitFullscreen() {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      document.body.classList.remove("wide-view");
+      updateFullscreenButton();
+      if (fullscreenElement() && exit) {
+        try {
+          await exit.call(document);
+        } catch (error) {
+          // The page-level wide view is already closed; native fullscreen may require Esc.
+        }
+      }
+      updateFullscreenButton();
+      resize();
+    }
+
+    function handleFullscreenChange() {
+      if (!fullscreenElement()) {
+        document.body.classList.remove("wide-view");
+      }
+      updateFullscreenButton();
+      resize();
+    }
+
     function tick(now) {
       frame++;
       const delta = clamp((now - lastTime) / 1000, 0.001, 0.033);
@@ -1956,6 +2101,19 @@
     }
 
     for (const input of Object.values(controls)) input.addEventListener("input", syncOutputs);
+
+    fullscreenToggleButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (document.body.classList.contains("wide-view")) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    });
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
 
     cameraModeButton.addEventListener("click", () => {
       pilotMode = true;
