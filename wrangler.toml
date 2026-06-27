@@ -1,2 +1,2 @@
 name = "jackfish"
-pages_build_output_dir = "outputs/Jackfish"
+pages_build_output_dir = "."
