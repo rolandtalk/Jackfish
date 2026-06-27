@@ -198,7 +198,7 @@
       top: max(16px, env(safe-area-inset-top));
       right: var(--edge-r);
       z-index: 2;
-      width: min(350px, calc(100vw - 32px));
+      width: min(202px, calc(100vw - 32px));
       aspect-ratio: 1.42;
       padding: 12px;
       pointer-events: none;
@@ -435,7 +435,7 @@
         right: auto;
         left: 10px;
         bottom: 10px;
-        width: min(350px, calc(100vw - 20px));
+        width: min(202px, calc(100vw - 20px));
       }
 
     }
@@ -503,7 +503,7 @@
       .tank-frame {
         top: var(--edge-b);
         right: var(--edge-r);
-        width: min(260px, 30vw);
+        width: min(150px, 18vw);
         padding: 8px;
       }
 
@@ -1000,6 +1000,19 @@
       return dollar;
     }
 
+    function tankDiagonalBalloonYaw() {
+      return Math.atan2(tank.x, tank.z) + 0.16;
+    }
+
+    function chooseBalloonYaw() {
+      return Math.random() < 0.8 ? tankDiagonalBalloonYaw() : rand(0, Math.PI * 2);
+    }
+
+    function lerpAngle(current, target, amount) {
+      const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+      return current + delta * amount;
+    }
+
     function makeMoaiFigure() {
       const figure = new THREE.Group();
 
@@ -1136,6 +1149,7 @@
       const angle = rand(0, Math.PI * 2);
       const launchDirection = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)).normalize();
       const floatBaseY = rand(tank.y * 0.2, tank.y * 0.34);
+      const initialYaw = chooseBalloonYaw();
       balloonRide = {
         position: new THREE.Vector3(rand(-tank.x * 0.1, tank.x * 0.1), -tank.y / 2 + 28, rand(-tank.z * 0.1, tank.z * 0.1)),
         velocity: new THREE.Vector3(),
@@ -1144,6 +1158,8 @@
         launching: true,
         floatBaseY,
         floatPhase: rand(0, Math.PI * 2),
+        yaw: initialYaw,
+        targetYaw: initialYaw,
         nextWander: frame + Math.floor(rand(420, 860)),
         mesh: makeBalloonRideMesh()
       };
@@ -1465,6 +1481,7 @@
       if (!balloonRide.launching && frame >= balloonRide.nextWander) {
         balloonRide.wander.set(rand(-1, 1), 0, rand(-1, 1)).normalize();
         balloonRide.floatBaseY = rand(tank.y * 0.18, tank.y * 0.36);
+        balloonRide.targetYaw = chooseBalloonYaw();
         balloonRide.nextWander = frame + Math.floor(rand(420, 860));
       }
 
@@ -1479,6 +1496,7 @@
         if (balloonRide.position.y >= balloonRide.floatBaseY) {
           balloonRide.launching = false;
           balloonRide.velocity.y *= 0.25;
+          balloonRide.targetYaw = chooseBalloonYaw();
           balloonRide.nextWander = frame + Math.floor(rand(240, 520));
         }
       } else {
@@ -1503,9 +1521,10 @@
 
       const bob = Math.sin(frame * 0.024 + balloonRide.floatPhase) * 4.5;
       balloonRide.mesh.position.copy(balloonRide.position).add(new THREE.Vector3(0, bob, 0));
+      balloonRide.yaw = lerpAngle(balloonRide.yaw, balloonRide.targetYaw, 0.018);
       balloonRide.mesh.rotation.set(
         Math.sin(frame * 0.011 + balloonRide.floatPhase) * 0.035,
-        Math.sin(frame * 0.006 + balloonRide.floatPhase) * 0.12,
+        balloonRide.yaw + Math.sin(frame * 0.006 + balloonRide.floatPhase) * 0.035,
         Math.cos(frame * 0.01 + balloonRide.floatPhase) * 0.035
       );
 
