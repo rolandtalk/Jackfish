@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jackfish Shark Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071316;
+      --panel: rgba(10, 18, 22, 0.8);
+      --line: rgba(255, 255, 255, 0.14);
+      --ink: #f3fbfc;
+      --muted: #97adb4;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #12313a 0%, var(--bg) 56%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #viewer {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 2;
+      min-width: 220px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .controls {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 2;
+      width: 260px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    }
+
+    .controls h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .control {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .control label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .control input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+
+    .control output {
+      font-size: 12px;
+      color: var(--ink);
+      min-width: 52px;
+      text-align: right;
+    }
+
+    .toggle {
+      width: 100%;
+      margin-top: 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="viewer"></canvas>
+  <div class="hud">
+    <h1>Otodus megalodon</h1>
+    <p>Drag to orbit. Scroll to zoom. Wall-hugging surface lap with a steady predator glide.</p>
+  </div>
+  <div class="controls">
+    <h2>Fish Control</h2>
+    <div class="control">
+      <label for="axis-x-rotate">Red axis</label>
+      <output id="axis-x-value">90deg</output>
+      <input id="axis-x-rotate" type="range" min="-180" max="180" step="1" value="90">
+    </div>
+    <div class="control">
+      <label for="axis-y-rotate">Green axis</label>
+      <output id="axis-y-value">90deg</output>
+      <input id="axis-y-rotate" type="range" min="-180" max="180" step="1" value="90">
+    </div>
+    <div class="control">
+      <label for="axis-z-rotate">Blue direction</label>
+      <output id="axis-z-value">Counterclockwise</output>
+      <input id="axis-z-rotate" type="range" min="-1" max="1" step="2" value="-1">
+    </div>
+    <div class="control">
+      <label for="axis-brown-rotate">Brown spine axis</label>
+      <output id="axis-brown-value">0deg</output>
+      <input id="axis-brown-rotate" type="range" min="-180" max="180" step="1" value="0">
+    </div>
+    <div class="control">
+      <label for="heading-pan">Heading pan</label>
+      <output id="heading-pan-value">0deg</output>
+      <input id="heading-pan" type="range" min="-180" max="180" step="1" value="0">
+    </div>
+    <button id="motion-toggle" class="toggle" type="button">Pause</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/+esm";
+    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js/+esm";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js/+esm";
+
+    const canvas = document.getElementById("viewer");
+    const axisXInput = document.getElementById("axis-x-rotate");
+    const axisYInput = document.getElementById("axis-y-rotate");
+    const axisZInput = document.getElementById("axis-z-rotate");
+    const axisBrownInput = document.getElementById("axis-brown-rotate");
+    const headingPanInput = document.getElementById("heading-pan");
+    const axisXValue = document.getElementById("axis-x-value");
+    const axisYValue = document.getElementById("axis-y-value");
+    const axisZValue = document.getElementById("axis-z-value");
+    const axisBrownValue = document.getElementById("axis-brown-value");
+    const headingPanValue = document.getElementById("heading-pan-value");
+    const motionToggle = document.getElementById("motion-toggle");
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x071316, 0.00012);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 50000);
+    camera.position.set(0, 1200, 3600);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x071316, 1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.target.set(0, -120, 0);
+    controls.minDistance = 2200;
+    controls.maxDistance = 9000;
+
+    scene.add(new THREE.HemisphereLight(0xb8f7ff, 0x13242b, 2.4));
+
+    const key = new THREE.DirectionalLight(0xf3feff, 2.8);
+    key.position.set(180, 240, 160);
+    key.castShadow = true;
+    scene.add(key);
+
+    const rim = new THREE.DirectionalLight(0x76d8ff, 1.8);
+    rim.position.set(-220, 140, -180);
+    scene.add(rim);
+
+    const fill = new THREE.PointLight(0x6ad8ff, 1200, 900);
+    fill.position.set(0, 120, 0);
+    scene.add(fill);
+
+    const poolRadius = 2100;
+    const poolDepth = 720;
+
+    const deck = new THREE.Mesh(
+      new THREE.RingGeometry(poolRadius + 12, poolRadius + 95, 96),
+      new THREE.MeshStandardMaterial({
+        color: 0x4a6770,
+        roughness: 0.94,
+        metalness: 0.06
+      })
+    );
+    deck.rotation.x = -Math.PI / 2;
+    deck.position.y = 0.2;
+    deck.receiveShadow = true;
+    scene.add(deck);
+
+    const poolWall = new THREE.Mesh(
+      new THREE.CylinderGeometry(poolRadius, poolRadius, poolDepth, 96, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: 0xa9c9d1,
+        roughness: 0.24,
+        metalness: 0.04,
+        side: THREE.DoubleSide
+      })
+    );
+    poolWall.position.y = -poolDepth / 2;
+    poolWall.receiveShadow = true;
+    scene.add(poolWall);
+
+    const poolFloor = new THREE.Mesh(
+      new THREE.CircleGeometry(poolRadius - 6, 96),
+      new THREE.MeshStandardMaterial({
+        color: 0xc4dde3,
+        roughness: 0.32,
+        metalness: 0.02
+      })
+    );
+    poolFloor.rotation.x = -Math.PI / 2;
+    poolFloor.position.y = -poolDepth;
+    poolFloor.receiveShadow = true;
+    scene.add(poolFloor);
+
+    const poolRim = new THREE.Mesh(
+      new THREE.TorusGeometry(poolRadius + 2, 5, 24, 160),
+      new THREE.MeshStandardMaterial({
+        color: 0xe8f6f8,
+        roughness: 0.18,
+        metalness: 0.08
+      })
+    );
+    poolRim.rotation.x = Math.PI / 2;
+    poolRim.position.y = 1;
+    scene.add(poolRim);
+
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(poolRadius - 4, 96),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x56c7da,
+        transparent: true,
+        opacity: 0.24,
+        roughness: 0.08,
+        metalness: 0,
+        transmission: 0.24
+      })
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = 0;
+    scene.add(water);
+
+    const splashGroup = new THREE.Group();
+    scene.add(splashGroup);
+
+    const splashRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xcdf8ff,
+      transparent: true,
+      opacity: 0.7
+    });
+    const splashRing = new THREE.Mesh(
+      new THREE.RingGeometry(160, 240, 64),
+      splashRingMaterial
+    );
+    splashRing.rotation.x = -Math.PI / 2;
+    splashRing.position.y = 8;
+    splashRing.visible = false;
+    splashGroup.add(splashRing);
+
+    const splashColumns = [];
+    const splashColumnGeometry = new THREE.CylinderGeometry(9, 14, 180, 10);
+    const splashColumnMaterial = new THREE.MeshStandardMaterial({
+      color: 0xdaf8ff,
+      emissive: 0x5ccfe7,
+      emissiveIntensity: 0.35,
+      transparent: true,
+      opacity: 0.9,
+      roughness: 0.16,
+      metalness: 0
+    });
+    for (let i = 0; i < 12; i++) {
+      const column = new THREE.Mesh(splashColumnGeometry, splashColumnMaterial.clone());
+      column.visible = false;
+      splashGroup.add(column);
+      splashColumns.push(column);
+    }
+
+    const dropletMeshes = [];
+    const dropletStates = [];
+    const dropletGeometry = new THREE.SphereGeometry(12, 10, 8);
+    const dropletMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe7fdff,
+      emissive: 0x8feaff,
+      emissiveIntensity: 0.42,
+      transparent: true,
+      opacity: 0.95,
+      roughness: 0.2
+    });
+    for (let i = 0; i < 32; i++) {
+      const mesh = new THREE.Mesh(dropletGeometry, dropletMaterial.clone());
+      mesh.visible = false;
+      splashGroup.add(mesh);
+      dropletMeshes.push(mesh);
+      dropletStates.push({
+        active: false,
+        origin: new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        startedAt: 0,
+        life: 1.1
+      });
+    }
+
+    let lastEntryAt = -10;
+    let lastImpactAt = -10;
+
+    function triggerSplash(kind, x, z, nowSeconds) {
+      const isEntry = kind === "entry";
+      if (isEntry) lastEntryAt = nowSeconds;
+      else lastImpactAt = nowSeconds;
+
+      splashRing.visible = true;
+      splashRing.position.set(x, 8, z);
+      splashRing.scale.setScalar(isEntry ? 1.1 : 1.45);
+      splashRing.material.opacity = isEntry ? 0.82 : 0.98;
+
+      for (let i = 0; i < splashColumns.length; i++) {
+        const column = splashColumns[i];
+        const angle = (i / splashColumns.length) * Math.PI * 2 + (isEntry ? 0.1 : 0.34);
+        const radius = isEntry ? 280 : 360;
+        column.visible = true;
+        column.position.set(
+          x + Math.cos(angle) * radius,
+          isEntry ? 140 : 180,
+          z + Math.sin(angle) * radius
+        );
+        column.rotation.z = Math.cos(angle) * 0.24;
+        column.rotation.x = Math.sin(angle) * 0.24;
+        column.scale.set(
+          0.95 + (i % 3) * 0.1,
+          isEntry ? 1.1 + (i % 2) * 0.28 : 1.45 + (i % 2) * 0.34,
+          0.95 + (i % 3) * 0.1
+        );
+        column.material.opacity = isEntry ? 0.82 : 0.98;
+      }
+
+      for (let i = 0; i < dropletStates.length; i++) {
+        const state = dropletStates[i];
+        const mesh = dropletMeshes[i];
+        const angle = (i / dropletStates.length) * Math.PI * 2 + (Math.random() * 0.35);
+        const speed = (isEntry ? 34 : 46) + Math.random() * (isEntry ? 18 : 24);
+        state.active = true;
+        state.startedAt = nowSeconds;
+        state.life = isEntry ? 0.95 + Math.random() * 0.22 : 1.15 + Math.random() * 0.34;
+        state.origin.set(x, 25, z);
+        state.velocity.set(
+          Math.cos(angle) * speed * 0.72,
+          speed,
+          Math.sin(angle) * speed * 0.72
+        );
+        mesh.visible = true;
+        mesh.scale.setScalar(isEntry ? 1 + Math.random() * 0.65 : 1.2 + Math.random() * 0.9);
+      }
+    }
+
+    function buildSharkRig(root, size) {
+      const bones = [];
+      const tempWorld = new THREE.Vector3();
+      const tempLocal = new THREE.Vector3();
+      root.updateMatrixWorld(true);
+      root.traverse((node) => {
+        if (!node.isBone) return;
+        node.getWorldPosition(tempWorld);
+        tempLocal.copy(tempWorld);
+        root.worldToLocal(tempLocal);
+        bones.push({
+          bone: node,
+          baseRotation: node.rotation.clone(),
+          local: tempLocal.clone()
+        });
+      });
+
+      if (!bones.length) return null;
+
+      const axisKeys = ["x", "y", "z"];
+      const dominantAxis = axisKeys.reduce((best, axis) => size[axis] > size[best] ? axis : best, "x");
+      const otherAxes = axisKeys.filter((axis) => axis !== dominantAxis);
+      const sideAxis = otherAxes.reduce((best, axis) => size[axis] > size[best] ? axis : best, otherAxes[0]);
+      const heightAxis = axisKeys.find((axis) => axis !== dominantAxis && axis !== sideAxis);
+      const sorted = [...bones].sort((a, b) => a.local[dominantAxis] - b.local[dominantAxis]);
+      const min = sorted[0].local[dominantAxis];
+      const max = sorted[sorted.length - 1].local[dominantAxis];
+      const span = Math.max(0.001, max - min);
+
+      const waveBones = sorted.map((entry, index) => ({
+        ...entry,
+        t: (entry.local[dominantAxis] - min) / span,
+        index
+      }));
+
+      const sampleCount = Math.max(2, Math.floor(waveBones.length * 0.16));
+      const endSpread = (entries) => entries.reduce((sum, entry) => {
+        return sum + Math.abs(entry.local[sideAxis]) + Math.abs(entry.local[heightAxis]) * 0.7;
+      }, 0) / Math.max(1, entries.length);
+      const startSpread = endSpread(waveBones.slice(0, sampleCount));
+      const endSpreadValue = endSpread(waveBones.slice(-sampleCount));
+      const tailAtStart = startSpread < endSpreadValue;
+
+      const finBones = waveBones.filter((entry) =>
+        Math.abs(entry.local[sideAxis]) > size[sideAxis] * 0.08 &&
+        entry.t > 0.16 &&
+        entry.t < 0.76
+      );
+
+      const dorsalBones = waveBones.filter((entry) =>
+        entry.local[heightAxis] > size[heightAxis] * 0.12 &&
+        entry.t > 0.18 &&
+        entry.t < 0.72
+      );
+
+      const headBones = waveBones.filter((entry) =>
+        tailAtStart ? entry.t > 0.82 : entry.t < 0.18
+      );
+
+      return { waveBones, finBones, dorsalBones, headBones, sideAxis, tailAtStart };
+    }
+
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync("./otodus_megalodon.glb");
+    const shark = new THREE.Group();
+    const sharkPose = new THREE.Group();
+    const sharkModel = gltf.scene;
+
+    sharkModel.traverse((node) => {
+      if (!node.isMesh) return;
+      node.castShadow = true;
+      node.receiveShadow = true;
+    });
+
+    const sharkBaseRotation = {
+      x: 0,
+      y: Math.PI,
+      z: Math.PI / 2
+    };
+    sharkModel.rotation.x = sharkBaseRotation.x;
+    sharkModel.rotation.z = sharkBaseRotation.z;
+    sharkModel.rotation.y = sharkBaseRotation.y;
+    sharkModel.updateMatrixWorld(true);
+
+    const initialBox = new THREE.Box3().setFromObject(sharkModel);
+    const initialCenter = initialBox.getCenter(new THREE.Vector3());
+    sharkModel.position.sub(initialCenter);
+    sharkModel.updateMatrixWorld(true);
+
+    const fittedBox = new THREE.Box3().setFromObject(sharkModel);
+    const size = fittedBox.getSize(new THREE.Vector3());
+    const scale = 260 / Math.max(size.x, size.z, 1);
+    sharkModel.scale.setScalar(scale);
+    sharkModel.updateMatrixWorld(true);
+
+    const scaledBox = new THREE.Box3().setFromObject(sharkModel);
+    const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+    const scaledMin = scaledBox.min.clone();
+    const scaledSize = scaledBox.getSize(new THREE.Vector3());
+    sharkModel.position.sub(scaledCenter);
+    sharkModel.position.y -= scaledMin.y;
+    sharkModel.position.y += 10;
+
+    sharkPose.add(sharkModel);
+    shark.userData.rig = buildSharkRig(sharkModel, scaledSize);
+
+    const debugAxisSize = Math.max(scaledSize.x, scaledSize.y, scaledSize.z) * 0.9;
+    const axisMaterialX = new THREE.LineBasicMaterial({ color: 0xff4d4f, depthTest: false });
+    const axisMaterialY = new THREE.LineBasicMaterial({ color: 0x52c41a, depthTest: false });
+    const axisMaterialZ = new THREE.LineBasicMaterial({ color: 0x4096ff, depthTest: false });
+    const axisX = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(debugAxisSize, 0, 0)]),
+      axisMaterialX
+    );
+    const axisY = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, debugAxisSize, 0)]),
+      axisMaterialY
+    );
+    const axisZ = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, debugAxisSize)]),
+      axisMaterialZ
+    );
+    const axisMaterialBrown = new THREE.LineBasicMaterial({ color: 0x8b5a2b, depthTest: false });
+    const axisBrown = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, -debugAxisSize * 0.6),
+        new THREE.Vector3(0, 0, debugAxisSize * 0.6)
+      ]),
+      axisMaterialBrown
+    );
+    axisX.renderOrder = 24;
+    axisY.renderOrder = 24;
+    axisZ.renderOrder = 24;
+    axisBrown.renderOrder = 24;
+    sharkPose.add(axisX);
+    sharkPose.add(axisY);
+    sharkPose.add(axisZ);
+    sharkModel.add(axisBrown);
+
+    let motionPaused = false;
+    let pausedSimTime = 0;
+    let lastSimTime = 0;
+    let timeOffset = 0;
+    let lapDirection = -1;
+    let headingPanRadians = 0;
+
+    function syncAxisControls() {
+      const redDegrees = Number(axisXInput.value);
+      const greenDegrees = Number(axisYInput.value);
+      const brownDegrees = Number(axisBrownInput.value);
+      const headingPanDegrees = Number(headingPanInput.value);
+      const redRadians = THREE.MathUtils.degToRad(redDegrees);
+      const greenRadians = THREE.MathUtils.degToRad(greenDegrees);
+      const brownRadians = THREE.MathUtils.degToRad(brownDegrees);
+      headingPanRadians = THREE.MathUtils.degToRad(headingPanDegrees);
+      lapDirection = Number(axisZInput.value) >= 0 ? 1 : -1;
+      sharkPose.rotation.x = redRadians;
+      sharkPose.rotation.y = greenRadians;
+      sharkPose.rotation.z = 0;
+      sharkModel.rotation.z = sharkBaseRotation.z + brownRadians;
+      axisX.rotation.z = THREE.MathUtils.degToRad(redDegrees);
+      axisY.rotation.x = greenRadians;
+      axisZ.rotation.y = lapDirection > 0 ? 0 : Math.PI;
+      axisBrown.rotation.x = brownRadians;
+      axisXValue.value = `${redDegrees}deg`;
+      axisYValue.value = `${greenDegrees}deg`;
+      axisZValue.value = lapDirection > 0 ? "Clockwise" : "Counterclockwise";
+      axisBrownValue.value = `${brownDegrees}deg`;
+      headingPanValue.value = `${headingPanDegrees}deg`;
+      sharkPose.updateMatrixWorld(true);
+    }
+
+    axisXInput.addEventListener("input", syncAxisControls);
+    axisYInput.addEventListener("input", syncAxisControls);
+    axisZInput.addEventListener("input", syncAxisControls);
+    axisBrownInput.addEventListener("input", syncAxisControls);
+    headingPanInput.addEventListener("input", syncAxisControls);
+    syncAxisControls();
+
+    motionToggle.addEventListener("click", () => {
+      motionPaused = !motionPaused;
+      motionToggle.textContent = motionPaused ? "Go" : "Pause";
+      if (motionPaused) {
+        pausedSimTime = lastSimTime;
+      } else {
+        timeOffset = (performance.now() * 0.001) - pausedSimTime;
+      }
+    });
+
+    const boxCenterY = (scaledSize.y * 0.5) + 10;
+    const boundingBox = new THREE.Mesh(
+      new THREE.BoxGeometry(scaledSize.x, scaledSize.y, scaledSize.z),
+      new THREE.MeshBasicMaterial({
+        color: 0xffef5a,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false
+      })
+    );
+    boundingBox.position.set(0, boxCenterY, 0);
+    boundingBox.renderOrder = 23;
+    sharkPose.add(boundingBox);
+
+    const skeletonVertices = [];
+    sharkModel.updateMatrixWorld(true);
+    sharkModel.traverse((node) => {
+      if (!node.isBone || !node.parent || !node.parent.isBone) return;
+      const from = new THREE.Vector3();
+      const to = new THREE.Vector3();
+      node.getWorldPosition(from);
+      node.parent.getWorldPosition(to);
+      sharkPose.worldToLocal(from);
+      sharkPose.worldToLocal(to);
+      skeletonVertices.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    });
+    const skeletonGeometry = new THREE.BufferGeometry();
+    skeletonGeometry.setAttribute("position", new THREE.Float32BufferAttribute(skeletonVertices, 3));
+    const skeletonLines = new THREE.LineSegments(
+      skeletonGeometry,
+      new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false
+      })
+    );
+    skeletonLines.renderOrder = 25;
+    sharkPose.add(skeletonLines);
+
+    shark.add(sharkPose);
+
+    scene.add(shark);
+
+    function resize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener("resize", resize);
+
+    function smoothstep(edge0, edge1, x) {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    const swimTrackRadius = poolRadius - 12;
+    const lapBaseSpeed = 0.42;
+    const sharkHeadingOffset = Math.PI;
+    const modelForward = new THREE.Vector3(0, 0, 1);
+    const swimDirection = new THREE.Vector3();
+    const swimUp = new THREE.Vector3(0, 1, 0);
+    const headingQuaternion = new THREE.Quaternion();
+    const headingOffsetQuaternion = new THREE.Quaternion();
+
+    function tick(now = 0) {
+      const realTime = now * 0.001;
+      if (!motionPaused && timeOffset === 0) timeOffset = realTime;
+      const t = motionPaused ? pausedSimTime : realTime - timeOffset;
+      lastSimTime = t;
+      const kickCycle = t * 1.65;
+      const kickEnvelope = Math.pow(Math.max(0, Math.sin(kickCycle)), 2.6);
+      const glideEnvelope = 0.55 + kickEnvelope * 0.72;
+      const lapBaseRate = lapBaseSpeed * lapDirection;
+      const orbitAngle = t * lapBaseRate;
+      const x = Math.cos(orbitAngle) * swimTrackRadius;
+      const z = Math.sin(orbitAngle) * swimTrackRadius;
+      swimDirection.set(
+        -Math.sin(orbitAngle) * lapBaseRate,
+        0,
+        Math.cos(orbitAngle) * lapBaseRate
+      ).normalize();
+      headingQuaternion.setFromUnitVectors(modelForward, swimDirection);
+      headingOffsetQuaternion.setFromAxisAngle(swimUp, sharkHeadingOffset + headingPanRadians);
+
+      shark.position.set(x, -20, z);
+      shark.quaternion.copy(headingQuaternion).multiply(headingOffsetQuaternion);
+
+      const rig = shark.userData.rig;
+      if (rig) {
+        for (const entry of rig.waveBones) {
+          const tailBias = rig.tailAtStart ? Math.max(0, 1 - entry.t) : entry.t;
+          const headLock = smoothstep(0.34, 0.74, tailBias);
+          const bodyPhase = kickCycle * (0.72 + kickEnvelope * 0.55) - entry.t * 7.2;
+          const wave = Math.sin(bodyPhase);
+          const sweep = headLock * (0.004 + tailBias * (0.05 + kickEnvelope * 0.36));
+          entry.bone.rotation.y = entry.baseRotation.y + wave * sweep;
+          entry.bone.rotation.z = entry.baseRotation.z;
+        }
+        for (const entry of rig.finBones) {
+          const side = Math.sign(entry.local[rig.sideAxis]) || 1;
+          const flap = Math.sin(kickCycle * 2.7 + side * 0.7);
+          const finDrive = 0.28 + kickEnvelope * 1.32;
+          entry.bone.rotation.z = entry.baseRotation.z + side * flap * finDrive;
+          entry.bone.rotation.x = entry.baseRotation.x + flap * (0.08 + kickEnvelope * 0.24);
+        }
+        for (const entry of rig.dorsalBones) {
+          const flex = Math.sin(kickCycle * 0.92 - entry.t * 3.8);
+          entry.bone.rotation.x = entry.baseRotation.x + flex * (0.03 + kickEnvelope * 0.06);
+        }
+        for (const entry of rig.headBones) {
+          entry.bone.rotation.x = entry.baseRotation.x;
+          entry.bone.rotation.y = entry.baseRotation.y;
+          entry.bone.rotation.z = entry.baseRotation.z;
+        }
+      }
+
+      water.position.y = 0;
+      water.scale.setScalar(1 + kickEnvelope * 0.002 + glideEnvelope * 0.001);
+
+      const latestSplashAt = Math.max(lastEntryAt, lastImpactAt);
+      const splashAge = t - latestSplashAt;
+      if (splashAge >= 0 && splashAge < 1.25) {
+        splashRing.visible = true;
+        splashRing.scale.setScalar(1.2 + splashAge * 6.8);
+        splashRing.material.opacity = Math.max(0, 1 - splashAge * 0.82);
+      } else {
+        splashRing.visible = false;
+      }
+
+      for (let i = 0; i < splashColumns.length; i++) {
+        const column = splashColumns[i];
+        const age = t - Math.max(lastEntryAt, lastImpactAt);
+        if (age >= 0 && age < 0.5) {
+          column.visible = true;
+          column.position.y = 120 + (0.5 - age) * 160;
+          column.scale.y *= 0.992;
+          column.material.opacity = Math.max(0, 0.95 - age * 1.8);
+        } else {
+          column.visible = false;
+        }
+      }
+
+      for (let i = 0; i < dropletStates.length; i++) {
+        const state = dropletStates[i];
+        const mesh = dropletMeshes[i];
+        if (!state.active) {
+          mesh.visible = false;
+          continue;
+        }
+        const age = t - state.startedAt;
+        if (age > state.life) {
+          state.active = false;
+          mesh.visible = false;
+          continue;
+        }
+        const gravity = 46;
+        mesh.visible = true;
+        mesh.position.set(
+          state.origin.x + state.velocity.x * age,
+          state.origin.y + state.velocity.y * age - 0.5 * gravity * age * age,
+          state.origin.z + state.velocity.z * age
+        );
+        mesh.material.opacity = Math.max(0, 0.95 - age / state.life);
+      }
+
+      if (kickEnvelope > 0.96 && t - Math.max(lastEntryAt, lastImpactAt) > 1.2) {
+        triggerSplash("entry", x, z, t);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    }
+
+    tick();
+  </script>
+</body>
+</html>

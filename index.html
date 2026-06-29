@@ -193,6 +193,15 @@
       padding: 0 6px;
     }
 
+    .section-title {
+      margin: 4px 0 -2px;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
     .tank-frame {
       position: fixed;
       top: max(16px, env(safe-area-inset-top));
@@ -618,6 +627,35 @@
           <button data-look="up" type="button">up</button>
           <button data-look="back" type="button">back</button>
         </div>
+        <div class="section-title">Fish Control</div>
+        <div class="row">
+          <label for="sharkPitch">red axis</label>
+          <input id="sharkPitch" type="range" min="-180" max="180" value="0" step="1">
+          <output for="sharkPitch">0deg</output>
+        </div>
+        <div class="row">
+          <label for="sharkYaw">green axis</label>
+          <input id="sharkYaw" type="range" min="-180" max="180" value="0" step="1">
+          <output for="sharkYaw">0deg</output>
+        </div>
+        <div class="row">
+          <label for="sharkDirection">blue direction</label>
+          <input id="sharkDirection" type="range" min="-1" max="1" value="-1" step="2">
+          <output for="sharkDirection">Counterclockwise</output>
+        </div>
+        <div class="row">
+          <label for="sharkSpine">brown spine</label>
+          <input id="sharkSpine" type="range" min="-180" max="180" value="0" step="1">
+          <output for="sharkSpine">0deg</output>
+        </div>
+        <div class="row">
+          <label for="sharkHeadingPan">heading pan</label>
+          <input id="sharkHeadingPan" type="range" min="-180" max="180" value="0" step="1">
+          <output for="sharkHeadingPan">0deg</output>
+        </div>
+        <div class="buttons">
+          <button id="toggleSharkMotion" type="button" class="active">Pause shark</button>
+        </div>
       </div>
     </div>
   </section>
@@ -642,7 +680,8 @@
   <button id="toggleCounter" class="counter-float" type="button" aria-expanded="false" aria-controls="colorPanelBody">Show colors</button>
 
   <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/+esm";
+    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js/+esm";
 
     const canvas = document.getElementById("world");
     const controls = {
@@ -654,6 +693,14 @@
       storm: document.getElementById("storm"),
       zoom: document.getElementById("zoom")
     };
+    const sharkControls = {
+      pitch: document.getElementById("sharkPitch"),
+      yaw: document.getElementById("sharkYaw"),
+      direction: document.getElementById("sharkDirection"),
+      spine: document.getElementById("sharkSpine"),
+      headingPan: document.getElementById("sharkHeadingPan")
+    };
+    const toggleSharkMotionButton = document.getElementById("toggleSharkMotion");
     const fpsLabel = document.getElementById("fps");
     const cameraModeButton = document.getElementById("cameraMode");
     const tankFrame = document.getElementById("tankFrame");
@@ -683,6 +730,7 @@
     ];
 
     const tank = { x: 2240, y: 1240, z: 1440 };
+    const sharkPatrolLoopSeconds = 30;
     const starvationMs = 15000;
     const foodRegenMs = 20000;
     const debugMoai = new URLSearchParams(window.location.search).get("debug") === "moai";
@@ -766,6 +814,15 @@
     turtleShellGeometry.scale(1.25, 0.42, 0.82);
     const turtleHeadGeometry = new THREE.SphereGeometry(2.1, 12, 8);
     const turtleFlipperGeometry = new THREE.BoxGeometry(5.2, 0.8, 2.1);
+    const sharkBodyGeometry = new THREE.SphereGeometry(7.4, 20, 14);
+    sharkBodyGeometry.scale(2.3, 0.82, 0.96);
+    const sharkBellyGeometry = new THREE.SphereGeometry(7.1, 18, 12);
+    sharkBellyGeometry.scale(1.95, 0.48, 0.76);
+    const sharkSnoutGeometry = new THREE.ConeGeometry(5.8, 14, 18);
+    sharkSnoutGeometry.rotateZ(-Math.PI / 2);
+    const sharkTailGeometry = new THREE.ConeGeometry(6.8, 12, 3);
+    sharkTailGeometry.rotateZ(Math.PI / 2);
+    const sharkFinGeometry = new THREE.BoxGeometry(7.5, 0.9, 4.8);
     const dollarCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(7, 13, 0),
       new THREE.Vector3(-1, 16, 0),
@@ -793,6 +850,8 @@
     const ghostMaterial = new THREE.MeshStandardMaterial({ color: 0xddeef1, roughness: 0.38, metalness: 0.04, emissive: 0x1d3035, emissiveIntensity: 0.25 });
     const turtleShellMaterial = new THREE.MeshStandardMaterial({ color: 0x7fbf7a, roughness: 0.5, metalness: 0.03, emissive: 0x6eea87, emissiveIntensity: 1.35 });
     const turtleSkinMaterial = new THREE.MeshStandardMaterial({ color: 0xb4d88f, roughness: 0.55, metalness: 0.02, emissive: 0x8dff9c, emissiveIntensity: 1.05 });
+    const sharkBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x8c949c, roughness: 0.45, metalness: 0.08, emissive: 0x2c3238, emissiveIntensity: 0.34 });
+    const sharkBellyMaterial = new THREE.MeshStandardMaterial({ color: 0x090b0d, roughness: 0.62, metalness: 0.02, emissive: 0x020304, emissiveIntensity: 0.18 });
     const balloonMaterial = new THREE.MeshStandardMaterial({ color: 0xffd43b, roughness: 0.28, metalness: 0.04, emissive: 0xffd43b, emissiveIntensity: 1.35 });
     const balloonBasketMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4f24, roughness: 0.66, metalness: 0.03, emissive: 0x5a2c12, emissiveIntensity: 0.42 });
     const miniFaceMaterial = new THREE.MeshStandardMaterial({ color: 0xffd43b, roughness: 0.36, metalness: 0.03, emissive: 0xffc928, emissiveIntensity: 0.75 });
@@ -804,10 +863,151 @@
     const playerGold = new THREE.Color("#ffd166");
     const playerBlinkGold = new THREE.Color("#fff2a6");
     const playerMaterial = new THREE.MeshStandardMaterial({ color: playerGold, roughness: 0.24, metalness: 0.08, emissive: playerGold, emissiveIntensity: 0.85 });
+    const sharkRed = new THREE.Color(0xff3b30);
+    const sharkPatrolCorners = (() => {
+      const marginX = tank.x / 2 - 120;
+      const marginY = tank.y / 2 - 150;
+      const marginZ = tank.z / 2 - 120;
+      return [
+        new THREE.Vector3(-marginX, marginY, -marginZ),
+        new THREE.Vector3(marginX, marginY, -marginZ),
+        new THREE.Vector3(marginX, marginY, marginZ),
+        new THREE.Vector3(marginX, -marginY, marginZ),
+        new THREE.Vector3(-marginX, -marginY, marginZ),
+        new THREE.Vector3(-marginX, -marginY, -marginZ)
+      ];
+    })();
+    function buildSharkRig(root, size) {
+      const bones = [];
+      const tempWorld = new THREE.Vector3();
+      const tempLocal = new THREE.Vector3();
+      root.updateMatrixWorld(true);
+      root.traverse((node) => {
+        if (!node.isBone) return;
+        node.getWorldPosition(tempWorld);
+        tempLocal.copy(tempWorld);
+        root.worldToLocal(tempLocal);
+        bones.push({
+          bone: node,
+          baseRotation: node.rotation.clone(),
+          local: tempLocal.clone()
+        });
+      });
+
+      if (!bones.length) return null;
+
+      const axisKeys = ["x", "y", "z"];
+      const dominantAxis = axisKeys.reduce((best, axis) => size[axis] > size[best] ? axis : best, "x");
+      const otherAxes = axisKeys.filter((axis) => axis !== dominantAxis);
+      const sideAxis = otherAxes.reduce((best, axis) => size[axis] > size[best] ? axis : best, otherAxes[0]);
+      const heightAxis = axisKeys.find((axis) => axis !== dominantAxis && axis !== sideAxis);
+      const sorted = [...bones].sort((a, b) => a.local[dominantAxis] - b.local[dominantAxis]);
+      const min = sorted[0].local[dominantAxis];
+      const max = sorted[sorted.length - 1].local[dominantAxis];
+      const span = Math.max(0.001, max - min);
+
+      const waveBones = sorted.map((entry, index) => ({
+        ...entry,
+        t: (entry.local[dominantAxis] - min) / span,
+        index
+      }));
+      const finBones = waveBones.filter((entry) =>
+        Math.abs(entry.local[sideAxis]) > size[sideAxis] * 0.08 &&
+        entry.t > 0.18 &&
+        entry.t < 0.72
+      );
+
+      return { waveBones, finBones, dominantAxis, sideAxis, heightAxis };
+    }
+
+    const sharkLoader = new GLTFLoader();
+    const sharkModelPromise = sharkLoader.loadAsync("./otodus_megalodon.glb").then((gltf) => {
+      const root = gltf.scene;
+
+      root.traverse((node) => {
+        if (!node.isMesh) return;
+        node.castShadow = true;
+        node.receiveShadow = true;
+        if (node.material) {
+          node.material = node.material.clone();
+          if ("color" in node.material) node.material.color.lerp(sharkRed, 0.82);
+          if ("emissive" in node.material) node.material.emissive.copy(sharkRed);
+          if ("emissiveIntensity" in node.material) node.material.emissiveIntensity = 1.35;
+        }
+      });
+
+      root.rotation.x = Math.PI / 2;
+      root.rotation.z = Math.PI / 2;
+      root.rotation.y = Math.PI;
+      root.updateMatrixWorld(true);
+
+      const initialBox = new THREE.Box3().setFromObject(root);
+      const initialCenter = initialBox.getCenter(new THREE.Vector3());
+      root.position.sub(initialCenter);
+      root.updateMatrixWorld(true);
+
+      const fittedBox = new THREE.Box3().setFromObject(root);
+      const fittedSize = fittedBox.getSize(new THREE.Vector3());
+      const targetLength = 240;
+      const scale = targetLength / Math.max(fittedSize.x, fittedSize.z, 1);
+      root.scale.setScalar(scale);
+      root.updateMatrixWorld(true);
+
+      const scaledBox = new THREE.Box3().setFromObject(root);
+      const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+      const scaledMin = scaledBox.min.clone();
+      const scaledSize = scaledBox.getSize(new THREE.Vector3());
+      root.position.sub(scaledCenter);
+      root.position.y -= scaledMin.y;
+      root.position.y += 18;
+      root.userData.length = scaledSize.x;
+      root.userData.rig = buildSharkRig(root, scaledSize);
+      const glow = new THREE.PointLight(0xff3b30, 880, 420, 2.1);
+      glow.position.set(0, 18, 0);
+      root.add(glow);
+      root.userData.glow = glow;
+      return root;
+    });
+
+    const helicopterLoader = new GLTFLoader();
+    const helicopterModelPromise = helicopterLoader.loadAsync("./sikorsky_ch-53e_sea_stallion.glb").then((gltf) => {
+      const root = gltf.scene;
+
+      root.traverse((node) => {
+        if (!node.isMesh) return;
+        node.castShadow = true;
+        node.receiveShadow = true;
+        if (node.material) node.material = node.material.clone();
+      });
+
+      root.updateMatrixWorld(true);
+      const initialBox = new THREE.Box3().setFromObject(root);
+      const initialCenter = initialBox.getCenter(new THREE.Vector3());
+      root.position.sub(initialCenter);
+      root.updateMatrixWorld(true);
+
+      const fittedBox = new THREE.Box3().setFromObject(root);
+      const fittedSize = fittedBox.getSize(new THREE.Vector3());
+      const targetHeight = tank.y * 0.25;
+      const scale = targetHeight / Math.max(fittedSize.y, 1);
+      root.scale.setScalar(scale);
+      root.updateMatrixWorld(true);
+
+      const scaledBox = new THREE.Box3().setFromObject(root);
+      const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+      const scaledMin = scaledBox.min.clone();
+      root.position.sub(scaledCenter);
+      root.position.y -= scaledMin.y;
+      root.rotation.y = -Math.PI / 2.2;
+      root.rotation.z = -0.03;
+      return root;
+    });
 
     let boids = [];
     let food = [];
     let turtles = [];
+    let sharks = [];
+    let sharkMotionPaused = false;
     let balloonRide = null;
     let fedAssignments = new Map();
     let foodCapacity = new Array(palette.length).fill(0);
@@ -976,6 +1176,45 @@
       turtles = [makeTurtle(0), makeTurtle(1)];
     }
 
+    function makeSharkMesh() {
+      const group = new THREE.Group();
+      group.userData.ready = false;
+      sharkModelPromise.then((template) => {
+        group.clear();
+        group.add(template);
+        group.userData.model = template;
+        group.userData.ready = true;
+      }).catch((error) => {
+        console.error("Failed to load shark model", error);
+      });
+      return group;
+    }
+
+    function makeShark() {
+      const start = sharkPatrolCorners[0].clone();
+      const next = sharkPatrolCorners[1].clone();
+      const initialVelocity = next.clone().sub(start).normalize().multiplyScalar(1.18);
+      const shark = {
+        position: start,
+        velocity: initialVelocity,
+        wander: initialVelocity.clone().normalize(),
+        nextWander: frame + Math.floor(rand(520, 920)),
+        phase: Math.PI * 0.35,
+        cruiseY: rand(tank.y * 0.2, tank.y * 0.32),
+        followSwarmIndex: Math.floor(rand(0, 2)),
+        patrolTime: 0,
+        mesh: makeSharkMesh()
+      };
+      shark.mesh.position.copy(shark.position);
+      scene.add(shark.mesh);
+      return shark;
+    }
+
+    function seedSharks() {
+      for (const shark of sharks) scene.remove(shark.mesh);
+      sharks = [makeShark()];
+    }
+
     function makeDollarBalloonMesh() {
       const dollar = new THREE.Group();
       const stroke = new THREE.Mesh(dollarStrokeGeometry, balloonMaterial);
@@ -1082,6 +1321,17 @@
       figure.rotateY(Math.PI);
       tankGroup.add(figure);
       return figure;
+    }
+
+    function placeHelicopter() {
+      helicopterModelPromise.then((model) => {
+        const helicopter = model.clone(true);
+        helicopter.position.set(0, -tank.y / 2, 0);
+        helicopter.position.y = -tank.y / 2;
+        tankGroup.add(helicopter);
+      }).catch((error) => {
+        console.error("Failed to load helicopter model", error);
+      });
     }
 
     function makeBalloonRideMesh() {
@@ -1464,6 +1714,74 @@
       }
     }
 
+    function updateSharks(delta) {
+      const directionSign = Number(sharkControls.direction.value) >= 0 ? 1 : -1;
+      const pitchOffset = THREE.MathUtils.degToRad(Number(sharkControls.pitch.value));
+      const yawOffset = THREE.MathUtils.degToRad(Number(sharkControls.yaw.value));
+      const spineOffset = THREE.MathUtils.degToRad(Number(sharkControls.spine.value));
+      const headingPanOffset = THREE.MathUtils.degToRad(Number(sharkControls.headingPan.value));
+      const segmentDuration = sharkPatrolLoopSeconds / sharkPatrolCorners.length;
+
+      for (const shark of sharks) {
+        if (!sharkMotionPaused) {
+          shark.patrolTime = (shark.patrolTime + delta) % sharkPatrolLoopSeconds;
+        }
+        const rawSegment = Math.floor(shark.patrolTime / segmentDuration) % sharkPatrolCorners.length;
+        const segmentProgress = (shark.patrolTime % segmentDuration) / segmentDuration;
+        const currentIndex = directionSign > 0
+          ? rawSegment
+          : (sharkPatrolCorners.length - rawSegment) % sharkPatrolCorners.length;
+        const nextIndex = directionSign > 0
+          ? (currentIndex + 1) % sharkPatrolCorners.length
+          : (currentIndex - 1 + sharkPatrolCorners.length) % sharkPatrolCorners.length;
+        const from = sharkPatrolCorners[currentIndex];
+        const to = sharkPatrolCorners[nextIndex];
+        shark.position.lerpVectors(from, to, segmentProgress);
+        shark.velocity.copy(to).sub(from).multiplyScalar(1 / Math.max(segmentDuration, 0.001));
+
+        shark.mesh.position.copy(shark.position);
+        if (shark.velocity.lengthSq() > 0.0001) {
+          const horizontal = new THREE.Vector3(shark.velocity.x, 0, shark.velocity.z);
+          if (horizontal.lengthSq() < 0.0001) horizontal.set(1, 0, 0);
+          horizontal.normalize();
+          const climb = clamp(shark.velocity.y / Math.max(0.001, Math.hypot(shark.velocity.x, shark.velocity.z)), -0.035, 0.035);
+          const target = shark.position.clone()
+            .add(horizontal.multiplyScalar(140))
+            .add(new THREE.Vector3(0, climb * 48, 0));
+          shark.mesh.lookAt(target);
+          shark.mesh.rotateY(headingPanOffset);
+        }
+
+        const swish = Math.sin(frame * 0.032 + shark.phase);
+        shark.mesh.rotation.z += (-swish * 0.012 - shark.mesh.rotation.z) * 0.08;
+        if (shark.mesh.userData.model) {
+          const model = shark.mesh.userData.model;
+          model.rotation.y = Math.PI + swish * 0.11 + yawOffset;
+          model.rotation.x = swish * 0.012 + pitchOffset;
+          model.rotation.z = spineOffset;
+          if (model.userData.glow) {
+            model.userData.glow.intensity = 820 + (swish + 1) * 180;
+          }
+
+          const rig = model.userData.rig;
+          if (rig) {
+            for (const entry of rig.waveBones) {
+              const wave = Math.sin(frame * 0.078 - entry.t * 4.9 + shark.phase);
+              const tailBias = Math.max(0, 1 - entry.t);
+              entry.bone.rotation.y = entry.baseRotation.y + wave * (0.018 + tailBias * 0.2);
+              entry.bone.rotation.z = entry.baseRotation.z + wave * tailBias * 0.06;
+            }
+            for (const entry of rig.finBones) {
+              const flap = Math.sin(frame * 0.13 + shark.phase + Math.sign(entry.local[rig.sideAxis]) * 0.8);
+              const side = Math.sign(entry.local[rig.sideAxis]) || 1;
+              entry.bone.rotation.z = entry.baseRotation.z + side * flap * 0.32;
+              entry.bone.rotation.x = entry.baseRotation.x + flap * 0.12;
+            }
+          }
+        }
+      }
+    }
+
     function updateBalloonRide(delta) {
       if (!balloonRide) return;
       const margin = 150;
@@ -1784,7 +2102,14 @@
           <span class="counter-percent">0%</span>
           <span class="counter-count">0</span>
         </div>
-      `).join("");
+      `).join("") + `
+        <div class="counter-row" data-shark-count="true" style="--swatch: #0f1720">
+          <span class="counter-bar"></span>
+          <span class="counter-label"><span class="swatch"></span>sharks</span>
+          <span class="counter-percent">0</span>
+          <span class="counter-count">0</span>
+        </div>
+      `;
     }
 
     function updateColorCounts() {
@@ -1812,6 +2137,13 @@
         row.querySelector(".counter-percent").textContent = `${Math.round(percent)}%`;
         row.querySelector(".counter-count").textContent = counts[index];
       }
+      const sharkRow = colorCountsBody.querySelector('[data-shark-count="true"]');
+      const sharkCount = sharks.length;
+      const sharkPercent = sharkCount / Math.max(1, alive) * 100;
+      sharkRow.querySelector(".counter-bar").style.width = `${Math.max(sharkPercent, sharkCount ? 4 : 0)}%`;
+      sharkRow.querySelector(".counter-bar").style.minWidth = sharkCount > 0 ? "4px" : "0";
+      sharkRow.querySelector(".counter-percent").textContent = sharkCount === 1 ? "1 shark" : `${sharkCount} sharks`;
+      sharkRow.querySelector(".counter-count").textContent = sharkCount;
     }
 
     function renderTankFrame() {
@@ -1910,6 +2242,16 @@
           tankMapCtx.fill();
         }
       }
+
+      for (const shark of sharks) {
+        const x = mapX(shark.position.x);
+        const y = mapY(shark.position.z);
+        tankMapCtx.globalAlpha = 0.92;
+        tankMapCtx.fillStyle = "#8c949c";
+        tankMapCtx.beginPath();
+        tankMapCtx.ellipse(x, y, 7.4, 3.2, Math.atan2(shark.velocity.z, shark.velocity.x), 0, Math.PI * 2);
+        tankMapCtx.fill();
+      }
       tankMapCtx.globalAlpha = 1;
       tankMapCtx.globalCompositeOperation = "source-over";
     }
@@ -1918,6 +2260,11 @@
       for (const input of Object.values(controls)) {
         input.nextElementSibling.value = input.id === "zoom" ? `${Number(input.value).toFixed(2)}x` : input.value;
       }
+      sharkControls.pitch.nextElementSibling.value = `${Number(sharkControls.pitch.value)}deg`;
+      sharkControls.yaw.nextElementSibling.value = `${Number(sharkControls.yaw.value)}deg`;
+      sharkControls.direction.nextElementSibling.value = Number(sharkControls.direction.value) >= 0 ? "Clockwise" : "Counterclockwise";
+      sharkControls.spine.nextElementSibling.value = `${Number(sharkControls.spine.value)}deg`;
+      sharkControls.headingPan.nextElementSibling.value = `${Number(sharkControls.headingPan.value)}deg`;
       camera.fov = clamp(74 / Number(controls.zoom.value), 32, 150);
       camera.updateProjectionMatrix();
     }
@@ -1940,6 +2287,7 @@
       matchCount();
       updateBoids(now, delta);
       updateTurtles(delta);
+      updateSharks(delta);
       updateBalloonRide(delta);
       updateCamera(delta);
       renderer.render(scene, camera);
@@ -1956,6 +2304,13 @@
     }
 
     for (const input of Object.values(controls)) input.addEventListener("input", syncOutputs);
+    for (const input of Object.values(sharkControls)) input.addEventListener("input", syncOutputs);
+
+    toggleSharkMotionButton.addEventListener("click", () => {
+      sharkMotionPaused = !sharkMotionPaused;
+      toggleSharkMotionButton.classList.toggle("active", !sharkMotionPaused);
+      toggleSharkMotionButton.textContent = sharkMotionPaused ? "Go shark" : "Pause shark";
+    });
 
     cameraModeButton.addEventListener("click", () => {
       pilotMode = true;
@@ -2029,7 +2384,9 @@
     buildColorCounts();
     seedBoids(Number(controls.count.value));
     makeMoaiFigure();
+    placeHelicopter();
     seedTurtles();
+    seedSharks();
     seedBalloonRide();
     updateColorCounts();
     resize();
